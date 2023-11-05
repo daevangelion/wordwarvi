@@ -323,7 +323,7 @@ struct level_descriptor_entry levelvar = { \
 /***************************************************************************/
 /* level 1 starts here: */
 struct level_obj_descriptor_entry level_1_obj[] = {
-	{ OBJ_TYPE_ROCKET, 	140, DO_IT_RANDOMLY, 0 }, 
+	{ OBJ_TYPE_ROCKET, 	140, DO_IT_RANDOMLY, 0 },
 	{ OBJ_TYPE_JET, 	0, DO_IT_RANDOMLY, 0 }, 
 	{ OBJ_TYPE_FUEL, 	20, DO_IT_RANDOMLY, 0 }, 
 	{ OBJ_TYPE_JAMMER, 	1, DO_IT_RANDOMLY, 0 }, 

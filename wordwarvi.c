@@ -18,9 +18,17 @@
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
  */
+
+#include <assert.h>
+#include <stdint.h>
+
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef N64
 #include <gtk/gtk.h>
+#else
+#include <libdragon.h>
+#endif
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
@@ -29,19 +37,21 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+#ifndef N64
 #ifndef __WIN32__
 #include <arpa/inet.h> /* for htonl, etc. */
 #else
-#include <winsock2.h> /* htonl */
+#include <winsock2.h> /* htonl */min
 #endif /* __WIN32__ */
-
+#endif
+#ifndef N64
 #include <gdk/gdkkeysyms.h>
+
 
 #ifdef DO_INHIBIT_SCREENSAVER
 #include <gdk/gdkx.h> /* for GDK_WINDOW_XWINDOW, for inhibiting screensaver. */
 #endif
-
+#endif
 #include <stdint.h>
 #include <math.h>
 
@@ -49,13 +59,16 @@
 #include <getopt.h>
 
 #include "compat.h"
+//#define WITHAUDIOSUPPORT
 #include "wwviaudio.h"
 #include "joystick.h"
 #include "rumble.h"
 #include "my_point.h"
 #include "wwvi_font.h"
 #include "version.h"
+#ifndef N64
 #include "stamp.h"
+#endif
 #ifdef OPENLASE
 #include "libol.h"
 #endif
@@ -80,7 +93,6 @@
 #define M_PI  (3.14159265)
 #endif
 #define TWOPI (M_PI * 2.0)
-
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 #define DEBUG_HITZONE 0
@@ -157,18 +169,23 @@
 #define RADAR_LEFT_MARGIN 10 /* space to leave, in pixels left/right of radar screen to window edge. */
 #define RADAR_RIGHT_MARGIN 160 /* space to leave, in pixels left/right of radar screen to window edge. */
 #define	RADAR_YMARGIN 10 /* space to leave, in pixels from bottom edge of radar to bottom of window */
-#define MAX_RADAR_NOISE 2000 /* maximum number of noise pixels placed by radar jammers, increasing */
+#define MAX_RADAR_NOISE 512 /* maximum number of noise pixels placed by radar jammers, increasing */
 			     /* this may adversely affect performance, as this number of x's are */
 			     /* drawn EVERY FRAME when in close proximity to jammer. */
 #ifdef OPENLASE
 #define FRAME_RATE_HZ 20	/* target frame rate at which gtk callback fires by default */
 #else
-#define FRAME_RATE_HZ 30	/* target frame rate at which gtk callback fires by default */
+#define FRAME_RATE_HZ 20	/* target frame rate at which gtk callback fires by default */
 #endif
 int frame_rate_hz = FRAME_RATE_HZ; /* Actual frame rate, user adjustable. */
 #define TERRAIN_LENGTH 1000	/* length, in number of line segments, of terrain */
+#ifdef N64
+#define SCREEN_WIDTH 640        /* window width, in pixels */
+#define SCREEN_HEIGHT 240       /* window height, in pixels */
+#else
 #define SCREEN_WIDTH 800        /* window width, in pixels */
 #define SCREEN_HEIGHT 600       /* window height, in pixels */
+#endif
 #define WORLDWIDTH (SCREEN_WIDTH * 40)  /* width of world, 40 screens wide. */
 #define KERNEL_Y_BOUNDARY (-1000) /* basically, an arbitrary altitude limit on movement of player. */
 
@@ -176,7 +193,7 @@ int frame_rate_hz = FRAME_RATE_HZ; /* Actual frame rate, user adjustable. */
 
 #define LARGE_SCALE_ROUGHNESS (0.04)   /* limits roughness, on large scale, of fractal terrain algorithm */
 #define SMALL_SCALE_ROUGHNESS (0.09)   /* limits roughtness, on small scale, of fractal terrain algorithm */
-#define MAXOBJS 8500		       /* arbitrary, maximum number of objects in game, ~4000 are commonly seen. */
+#define MAXOBJS 8192		       /* arbitrary, maximum number of objects in game, ~4000 are commonly seen. */
 
 
 					/* object allocation algorithm uses a bit per object to indicate */
@@ -286,7 +303,7 @@ int frame_rate_hz = FRAME_RATE_HZ; /* Actual frame rate, user adjustable. */
 #define MAX_TENTACLE_SEGS 40	   /* max number of segments of a tentacle */
 #define MAX_SEG_ANGLE 60	   /* max angle a tentacle may bend with the one next to it */
 				/* macro to compute initial tentacle angles */
-#define TENTACLE_RANGE(t) (randomn(t.upper_angle - t.lower_angle) + t.lower_angle)
+#define TENTACLE_RANGE(t) (randomn(t->upper_angle - t->lower_angle) + t->lower_angle)
 
 /* Scoring stuff */
 
@@ -366,9 +383,19 @@ int jsfd = -1;
 #define NRAINBOWSTEPS (16)
 #define NRAINBOWCOLORS (NRAINBOWSTEPS*3)
 
-GdkColor huex[NCOLORS + NSPARKCOLORS + NRAINBOWCOLORS]; /* all the colors we have to work with are in here */
-GdkColor *sparkcolor;		/* a pointer into the huex[] array where the spark colors begin */
-GdkColor *rainbow_color;	/* a pointer into the huex[] array where the rainbow colors begin */
+#ifndef N64
+#define COLOR_TYPE GdkColor
+#else
+#define COLOR_TYPE uint32_t
+#endif
+
+#ifdef N64
+volatile int gTicks;                    /* incremented every vblank */
+#endif
+
+COLOR_TYPE huex[NCOLORS + NSPARKCOLORS + NRAINBOWCOLORS]; /* all the colors we have to work with are in here */
+COLOR_TYPE *sparkcolor;		/* a pointer into the huex[] array where the spark colors begin */
+COLOR_TYPE *rainbow_color;	/* a pointer into the huex[] array where the rainbow colors begin */
 
 /* cardinal color indexes into huex array */
 #define WHITE 0
@@ -1771,10 +1798,10 @@ struct my_vect_obj **gamefont[4];
 #define NANO_FONT 3
 
 /* sizes of the fonts... in arbitrary units */
-#define BIG_FONT_SCALE 14 
-#define SMALL_FONT_SCALE 5 
-#define TINY_FONT_SCALE 3 
-#define NANO_FONT_SCALE 2 
+#define BIG_FONT_SCALE 4 
+#define SMALL_FONT_SCALE 3 
+#define TINY_FONT_SCALE 2 
+#define NANO_FONT_SCALE 1 
 
 /* spacing of letters between the fonts, pixels */
 #define BIG_LETTER_SPACING (10)
@@ -1826,6 +1853,8 @@ int high_score_file_descriptor = -1; /* not currently implemented. */
 #define GAME_OVER 1
 #define CREDITS 0
 
+#ifndef N64
+
 typedef void line_drawing_function(GdkDrawable *drawable,
 	 GdkGC *gc, gint x1, gint y1, gint x2, gint y2);
 
@@ -1835,15 +1864,29 @@ typedef void bright_line_drawing_function(GdkDrawable *drawable,
 typedef void rectangle_drawing_function(GdkDrawable *drawable,
 	GdkGC *gc, gboolean filled, gint x, gint y, gint width, gint height);
 
-typedef void explosion_function(int x, int y, int ivx, int ivy, int v, int nsparks, int time);
-typedef void add_spark_function(int x, int y, int vx, int vy, int time);
 void gdk_draw_line_count(GdkDrawable *drawable,
 	GdkGC *gc, gint x1, gint y1, gint x2, gint y2);
 
+rectangle_drawing_function *current_draw_rectangle = gdk_draw_rectangle;
+
+#else
+
+typedef void line_drawing_function(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color);
+typedef void bright_line_drawing_function(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color);
+typedef void rectangle_drawing_function(surface_t *disp, int filled, int x, int y, int width, int height, uint32_t color);
+void gdk_draw_line_count(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color);
+rectangle_drawing_function *current_draw_rectangle = NULL;
+
+#endif
+
+typedef void explosion_function(int x, int y, int ivx, int ivy, int v, int nsparks, int time);
+typedef void add_spark_function(int x, int y, int vx, int vy, int time);
+
+
 unsigned long total_line_count = 0;
 line_drawing_function *current_draw_line = gdk_draw_line_count;
-rectangle_drawing_function *current_draw_rectangle = gdk_draw_rectangle;
 bright_line_drawing_function *current_bright_line = NULL;
+
 explosion_function *explosion = NULL;
 explosion_function *bright_explosion = NULL;
 
@@ -1982,6 +2025,8 @@ static void openlase_shutdown(void)
     olShutdown();
 #endif
 }
+
+#ifndef N64
 
 void gdk_draw_line_count(GdkDrawable *drawable,
 	GdkGC *gc, gint x1, gint y1, gint x2, gint y2)
@@ -2123,6 +2168,147 @@ void crazy_rectangle(GdkDrawable *drawable,
 	crazy_line(drawable, gc, x4, y3, x4, y4);
 }
 
+#else
+
+#define CLAMP(x, low, high)  (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
+#define INSIDE_RECT(x,y,lrx,lry,ulx,uly) ((x >= ulx ) && (x <= lrx) && (y >= uly ) && (y <= lry))
+
+inline void graphics_bounded_draw_line(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color, int bounded)
+{
+	if(!INSIDE_RECT(x0, y0, SCREEN_WIDTH-1, SCREEN_HEIGHT-1, 0, 0) && !(INSIDE_RECT(x1, y1, SCREEN_WIDTH-1, SCREEN_HEIGHT-1, 0, 0))) {return;}
+	x0 = CLAMP(x0, 0, SCREEN_WIDTH-1);
+	x1 = CLAMP(x1, 0, SCREEN_WIDTH-1);
+	y0 = CLAMP(y0, 0, SCREEN_HEIGHT-1);
+	y1 = CLAMP(y1, 0, SCREEN_HEIGHT-1);
+	graphics_draw_line(disp, x0, y0, x1, y1, color);
+}
+
+
+
+void gdk_draw_line_count(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color)
+{
+	total_line_count++;
+	graphics_bounded_draw_line(disp, x0, y0, x1, y1, color, FALSE);
+}
+
+void scaled_line(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color)
+{
+	graphics_bounded_draw_line(disp, x0*xscale_screen, y0*yscale_screen,
+		x1*xscale_screen, y1*yscale_screen, color, FALSE);
+}
+
+void thick_scaled_line(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color)
+{
+	int sx1,sy1,sx2,sy2,dx,dy;
+
+	if (abs(x0-x1) > abs(y0-y1)) {
+		dx = 0;
+		dy = 1;
+	} else {
+		dx = 1;
+		dy = 0;
+	}
+	sx1 = x0*xscale_screen;
+	sx2 = x1*xscale_screen;
+	sy1 = y0*yscale_screen;	
+	sy2 = y1*yscale_screen;	
+	
+	graphics_bounded_draw_line(disp, sx1,sy1,sx2,sy2, color, FALSE);
+	graphics_bounded_draw_line(disp, sx1-dx,sy1-dy,sx2-dx,sy2-dy, color, FALSE);
+	graphics_bounded_draw_line(disp, sx1+dx,sy1+dy,sx2+dx,sy2+dy, color, FALSE);
+}
+
+void scaled_rectangle(surface_t *disp, int filled, int x, int y, int width, int height, uint32_t color)
+{ 
+	int x3, y3, x4, y4;
+		x3 = x*xscale_screen;
+		y3 = y*yscale_screen;
+		x4 = (x + width)*xscale_screen;
+		y4 = (y + height)*yscale_screen;
+
+		graphics_bounded_draw_line(disp, x3, y3, x4, y3, color, FALSE);
+		graphics_bounded_draw_line(disp, x3, y4, x4, y4, color, FALSE);
+		graphics_bounded_draw_line(disp, x3, y3, x3, y4, color, FALSE);
+		graphics_bounded_draw_line(disp, x4, y3, x4, y4, color, FALSE);
+		if(filled) {
+			x3++;
+			while(x3 < x4) {
+				graphics_bounded_draw_line(disp, x3, y3, x3, y4, color, FALSE);
+				x3++;
+			}
+		}
+
+}
+
+void scaled_bright_line(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color)
+{
+	int sx1,sy1,sx2,sy2,dx,dy;
+
+	if (abs(x0-x1) > abs(y0-y1)) {
+		dx = 0;
+		dy = 1;
+	} else {
+		dx = 1;
+		dy = 0;
+	}
+	sx1 = x0*xscale_screen;
+	sx2 = x1*xscale_screen;
+	sy1 = y0*yscale_screen;	
+	sy2 = y1*yscale_screen;	
+	graphics_bounded_draw_line(disp, sx1,sy1,sx2,sy2, huex[WHITE], FALSE);
+	graphics_bounded_draw_line(disp, sx1-dx,sy1-dy,sx2-dx,sy2-dy, color, FALSE);
+	graphics_bounded_draw_line(disp, sx1+dx,sy1+dy,sx2+dx,sy2+dy, color, FALSE);
+}
+
+void unscaled_bright_line(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color)
+{
+	int dx,dy;
+
+	if (abs(x0-x1) > abs(y0-y1)) {
+		dx = 0;
+		dy = 1;
+	} else {
+		dx = 1;
+		dy = 0;
+	}
+
+	graphics_bounded_draw_line(disp, x0,y0,x1,y1, huex[WHITE], FALSE);
+	graphics_bounded_draw_line(disp, x0-dx,y0-dy,x1-dx,y1-dy, color, FALSE);
+	graphics_bounded_draw_line(disp, x0+dx,y0+dy,x1+dx,y1+dy, color, FALSE);
+}
+
+void crazy_line(surface_t *disp, int x0, int y0, int x1, int y1, uint32_t color)
+{
+	int angle;
+
+	int x3,y3, x4,y4;
+	angle = timer % 360;
+
+	x3 = ((x0 - (SCREEN_WIDTH/2)) * sine[angle]) + SCREEN_WIDTH/2;
+	x4 = ((x1 - (SCREEN_WIDTH/2)) * sine[angle]) + SCREEN_WIDTH/2;
+	y3 = ((y0 - (SCREEN_HEIGHT/2)) * cosine[angle]) + SCREEN_HEIGHT/2;
+	y4 = ((y1 - (SCREEN_HEIGHT/2)) * cosine[angle]) + SCREEN_HEIGHT/2;
+	graphics_bounded_draw_line(disp, x3, y3, x4, y4, color, FALSE);	
+}
+
+void crazy_rectangle(surface_t *disp, __attribute__((unused)) int filled, int x, int y, int width, int height, uint32_t color)
+{
+	int x3, y3, x4, y4;
+
+	x3 = x;
+	y3 = y;
+	x4 = x + width;
+	y4 = y + height;
+
+	crazy_line(disp, x3, y3, x4, y3, color);
+	crazy_line(disp, x3, y4, x4, y4, color);
+	crazy_line(disp, x3, y3, x3, y4, color);
+	crazy_line(disp, x4, y3, x4, y4, color);
+}
+
+
+#endif
+
 void init_vxy_2_dxy(void)
 {
 	int x, y;
@@ -2169,6 +2355,7 @@ static inline int dy_from_vxy(int vx, int vy)
 /* attract mode text screen related functions */
 void set_font(int fontnumber)
 {
+	assert(fontnumber < 4 && !(fontnumber < 0));
 	current_font = fontnumber;
 }
 
@@ -2186,14 +2373,14 @@ void cleartext(void)
 void gameprint(char *s)
 {
 	int n;
-
+	assert(strlen(s) < 80);
 	/* printf("Printing '%s'\n", s); */
 	n = ntextlines;
 	if (n>=MAXTEXTLINES)
 		n = 0;
 	textline[n].x = cursorx;
 	textline[n].y = cursory;
-	textline[n].font = current_font;
+	textline[n].font = SMALL_FONT;
 	strcpy(textline[n].string, s);
 	ntextlines++;
 	if (ntextlines >=MAXTEXTLINES)
@@ -2209,7 +2396,12 @@ typedef void (*get_coords_func)(struct game_obj_t *parent, struct game_obj_t *ch
 
 /* some function pointers which game_obj_t's may have */
 typedef void obj_move_func(struct game_obj_t *o);		/* moves and object, called once per frame */
+
+#ifndef N64
 typedef void obj_draw_func(struct game_obj_t *o, GtkWidget *w); /* draws object, called 1/frame, if onscreen */
+#else
+typedef void obj_draw_func(struct game_obj_t *o, surface_t *w); /* draws object, called 1/frame, if onscreen */
+#endif
 typedef void obj_destroy_func(struct game_obj_t *o);		/* called when an object is killed */
 
 /* Various object type specific data structures are defined below. */
@@ -2266,20 +2458,20 @@ struct cron_data {
 };
 
 struct tentacle_seg_data {
-	int angle;			/* angle of this tentacle segment relative to previous one, in degrees */
-	int length;			/* length of tentacle seg, pixels */
-	int angular_v;			/* angular velocity, degrees/frame */
-	int dest_angle;			/* target angle towards which tentacle seg is moving. */
+	int16_t angle;			/* angle of this tentacle segment relative to previous one, in degrees */
+	uint16_t length;			/* length of tentacle seg, pixels */
+	int16_t angular_v;			/* angular velocity, degrees/frame */
+	int16_t dest_angle;			/* target angle towards which tentacle seg is moving. */
 };
 
 struct tentacle_data {
 	struct game_obj_t *attached_to;	/* the octopus's head */
-	int angle;			/* angle of attachment of first segment */
-	int nsegs;			/* how many segments? */
-	int upper_angle, lower_angle;	/* limits on attachment angle (keeps tentacles mostly pointing down) */
+	int16_t angle;			/* angle of attachment of first segment */
+	uint8_t nsegs;			/* how many segments? */
+	int16_t upper_angle, lower_angle;	/* limits on attachment angle (keeps tentacles mostly pointing down) */
 					/* array of tentacle segments */
-	int color_scheme;
-	int other_color;
+	uint8_t color_scheme;
+	uint8_t other_color;
 	struct tentacle_seg_data seg[MAX_TENTACLE_SEGS];	
 };
 
@@ -2389,7 +2581,7 @@ union type_specific_data {		/* union of all the typs specific data */
 	struct octopus_data octopus;
 	struct extra_player_data epd;
 	struct reindeer_data reindeer;
-	struct tentacle_data tentacle;
+	struct tentacle_data* tentacle;
 	struct floating_message_data floating_message;
 	struct cron_data cron;
 	struct human_data human;
@@ -2408,32 +2600,32 @@ union type_specific_data {		/* union of all the typs specific data */
 };
 
 struct game_obj_t {
-	int number;			/* offset into the go[] (game object) array */
+	uint16_t number;			/* offset into the go[] (game object) array */
 	obj_move_func *move; 
 	obj_draw_func *draw;
 	obj_destroy_func *destroy;
 	struct my_vect_obj *v;		/* drawing instructions */
 	int x, y;			/* current position, in game coords */
 	int vx, vy;			/* velocity */
-	int above_target_y;
-	int below_target_y;
-	int color;			/* initial color */
-	int alive;			/* alive?  Or dead? */
-	int otype;			/* object type */
+	short above_target_y;
+	short below_target_y;
+	uint16_t color;			/* initial color */
+	uint16_t otype;			/* object type */
 	struct game_obj_t *bullseye;	/* point to object this object is chasing */
 	int last_xi;			/* the last x index into the terrain array which */
 					/* corresponds to the segment directly underneath */
 					/* this object -- used for detecting when an object */
 					/* smacks into the ground. */
-	int counter;			/* a counter various object types used for var. purposes */
+	int16_t counter;			/* a counter various object types used for var. purposes */
 	union type_specific_data tsd;	/* the Type Specific Data for this object */
-	int missile_timer;		/* to keep missiles from firing excessively rapidly */
-	int radar_image;		/* Does this object show up on radar? */ 
-	int uses_health;
+	int8_t missile_timer;		/* to keep missiles from firing excessively rapidly */
+	int8_t alive;			/* alive?  Or dead? */
+	int8_t radar_image;		/* Does this object show up on radar? */ 
+	int8_t uses_health;
+	int8_t ontargetlist;		/* this list keeps of from having to scan the entire object list. */
 	struct health_data health;
 	struct game_obj_t *next;	/* These pointers, next, prev, are used to construct the */
 	struct game_obj_t *prev;	/* target list, the list of things which may be hit by other things */
-	int ontargetlist;		/* this list keeps of from having to scan the entire object list. */
 	get_coords_func gun_location;	/* for attaching guns to objects */
 	struct game_obj_t *attached_gun;/* For attaching guns to objects */
 	struct my_vect_obj *debris_form;/* How to draw it when destroyed. */
@@ -2469,6 +2661,9 @@ struct game_state_t {
 	int corrosive_atmosphere;
 	struct timeval start_time, 	/* Used to calculate how long player took to finish a level */
 		finish_time;
+#define MAX_TENTACLES 3*8
+    int allocated_tentacles;
+    struct tentacle_data tentacles[MAX_TENTACLES];
 	struct game_obj_t go[MAXOBJS];	/* all the objects in the game are in this array. */
 	int cmd_multiplier;		/* If you prefix keystrokes with a number... like editing in vi. */
 	int sound_effects_on;		/* Whether sound effects are turned on or off */
@@ -2503,9 +2698,10 @@ int highest_object_number = 1;
 int last_user_input_time = 0;
 int user_inaction_audio_pause = 0;
 
-
+#ifndef N64
 char rumbledevicestring[PATH_MAX];
 char *rumbledevice = NULL;
+#endif
 
 struct game_obj_t * human[MAXHUMANS];	/* Keep a special array of just the humans so we can scan it quickly */
 
@@ -2514,9 +2710,19 @@ struct game_obj_t *player = &game_state.go[0];	/* The player is object zero. */
 struct game_obj_t *player_target;
 int lasthuman = 0;				/* debug code... for 'n' key. */
 
+#ifndef N64
+
 GdkGC *gc = NULL;		/* our graphics context. */
 GtkWidget *main_da;		/* main drawing area. */
 gint timer_tag;			/* for our gtk 30 times per second timer function */
+
+#else
+
+surface_t *disp = NULL;		/* our graphics context. */
+int timer_tag;			/* for our gtk 30 times per second timer function */
+
+#endif
+
 int next_quarter_time = -1;	/* Used to limit rate at which quarters can be put in. */
 int next_thunder_time = -1;
 
@@ -2533,14 +2739,19 @@ int want_missile_alarm = 1;
 #ifdef LEVELWARP
 int levelwarp = 1;
 #endif
+
+#ifndef N64
 GtkWidget *window = NULL; /* main window */
+#endif
 
 #define STAR_SHIFT 3
-#define NSTARS 600 
+#define NSTARS 100
 #ifdef OPENLASE
 int number_of_stars = 20;
+#elifdef N64
+int number_of_stars = 50;
 #else
-int number_of_stars = 150;
+int number_of_stars = 80;
 #endif
 int starshift = STAR_SHIFT; 
 struct star_t {
@@ -2662,6 +2873,12 @@ int approximate_horizon(int x, int y, int *last_xi)
 	return GROUND_OOPS;
 }
 
+#ifdef N64
+
+inline int play_rumble_effect(int effect)	{ return 0; };
+
+#endif
+
 void do_strong_rumble(void)
 {
 	if (credits > 0 && game_state.rumble_wanted)
@@ -2673,14 +2890,18 @@ void do_weak_rumble(void)
 	if (credits > 0 && game_state.rumble_wanted)
 		play_rumble_effect(RUMBLE_WEAK_RUMBLE_EFFECT);
 }
-
+#ifndef N64 
 void incorrect_draw_stars(GtkWidget *w)
+#else
+void incorrect_draw_stars(surface_t *w)
+#endif 
 {
 	short i;
 	short worldx, worldy;
 	short gl, sx, sy;
-
+	#ifndef N64 
 	gdk_gc_set_foreground(gc, &huex[WHITE]);
+	#endif 
 	for (i=0;i<number_of_stars;i++) {
 		if (randomn(100) < 3)
 			continue;
@@ -2697,10 +2918,18 @@ void incorrect_draw_stars(GtkWidget *w)
 		sy = sy >> starshift;
 		gl = approximate_horizon(worldx, worldy, &star[i].last_xi);
 		if (worldy < gl) {
-			if (star[i].bright && randomn(100) > 10) {
+			if (star[i].bright && randomn(100) > 10 && sy > 0) {
+				#ifndef N64 
 				wwvi_draw_line(w->window, gc, sx, sy-1, sx+1, sy-1);
+				#else
+				wwvi_draw_line(w, sx, sy-1, sx+1, sy-1, huex[WHITE]);
+				#endif 
 			}
-			wwvi_draw_line(w->window, gc, sx, sy, sx+1, sy);
+			#ifndef N64 
+				wwvi_draw_line(w->window, gc, sx, sy, sx+1, sy);
+			#else
+				wwvi_draw_line(w, sx, sy, sx+1, sy, huex[WHITE]);
+			#endif 
 		}
 	}
 	/* move stars */
@@ -2710,13 +2939,19 @@ void incorrect_draw_stars(GtkWidget *w)
 			% (SCREEN_HEIGHT << starshift) + (SCREEN_HEIGHT << starshift);
 }
 
+#ifndef N64 
 void correct_draw_stars(GtkWidget *w)
+#else
+void correct_draw_stars(surface_t *w)
+#endif 
 {
 	short i;
 	short worldx, worldy;
 	short gl, sx, sy;
 
+	#ifndef N64 
 	gdk_gc_set_foreground(gc, &huex[WHITE]);
+	#endif 
 	for (i=0;i<number_of_stars;i++) {
 		if (randomn(100) < 3)
 			continue;
@@ -2728,14 +2963,25 @@ void correct_draw_stars(GtkWidget *w)
 		gl = approximate_horizon(worldx, worldy, &star[i].last_xi);
 		if (worldy < gl) {
 			if (star[i].bright && randomn(100) > 10) {
+				#ifndef N64 
 				wwvi_draw_line(w->window, gc, sx, sy-1, sx+1, sy-1);
+				#else
+				wwvi_draw_line(w, sx, sy-1, sx+1, sy-1, huex[WHITE]);
+				#endif 
 			}
-			wwvi_draw_line(w->window, gc, sx, sy, sx+1, sy);
+			#ifndef N64 
+				wwvi_draw_line(w->window, gc, sx, sy, sx+1, sy);
+			#else
+				wwvi_draw_line(w, sx, sy, sx+1, sy, huex[WHITE]);
+			#endif 
 		}
 	}
 }
-
+#ifndef N64
 void (*draw_stars)(GtkWidget *w) = incorrect_draw_stars;
+#else
+void (*draw_stars)(surface_t *w) = incorrect_draw_stars;
+#endif 
 
 
 /* add an object to the list of targets... */
@@ -2808,11 +3054,47 @@ do_it_anyway:
 	return next;
 }
 
+
+
+#ifdef N64
+
+// Fair and fast random generation (using xorshift32, with explicit seed)
+static uint32_t rand_state = 1;
+static uint32_t myrand(void) {
+    uint32_t x = rand_state;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 5;
+    return rand_state = x;
+}
+
+// SRAND(n): set seed for random number generator
+#define SRAND(n) ({ rand_state = (n + gTicks); if (!rand_state) rand_state = 1; })
+
+// RANDN(n): generate a random number from 0 to n-1
+#define RANDN(n) ({ \
+    __builtin_constant_p((n)) ? \
+        (myrand()%(n)) : \
+        (uint32_t)(((uint64_t)myrand() * (n)) >> 32); \
+})
+
+/* get a random number between 0 and n-1... fast and loose algorithm.  */
+static inline int randomn(int n)
+{
+	return RANDN(n);
+}
+
+#else
+
+#define SRAND(n) ( srandom(n) )
+
 /* get a random number between 0 and n-1... fast and loose algorithm.  */
 static inline int randomn(int n)
 {
 	return random() % n;
 }
+
+#endif
 
 #define min(a,b) ((a) > (b) ? (b) : (a))
 
@@ -3345,10 +3627,18 @@ void sam_move(struct game_obj_t *o)
 	}
 }
 
+#ifndef N64
+
 void draw_generic(struct game_obj_t *o, GtkWidget *w);
 void draw_scaled_generic(struct game_obj_t *o, GtkWidget *w, float xscale, float yscale);
 
 void fuel_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void draw_generic(struct game_obj_t *o, surface_t *w);
+void draw_scaled_generic(struct game_obj_t *o, surface_t *w, float xscale, float yscale);
+
+void fuel_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, y1, x2, y2;
 	int xdist, ydist;
@@ -3361,24 +3651,36 @@ void fuel_draw(struct game_obj_t *o, GtkWidget *w)
 	y1 = o->y - game_state.y + (SCREEN_HEIGHT/2) + 
 		30 - (45 * o->tsd.fuel.level / FUELTANK_CAPACITY);
 	if (o->tsd.fuel.level > 0) {
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[DARKGREEN]);
 		wwvi_draw_rectangle(w->window, gc, TRUE, x1, y1, 50, o->tsd.fuel.level * 45 / FUELTANK_CAPACITY);
+		#else
+		wwvi_draw_rectangle(w, TRUE, x1, y1, 50, o->tsd.fuel.level * 45 / FUELTANK_CAPACITY, huex[DARKGREEN]);
+		#endif
 	}
 
-	draw_generic(o, w); /* draw the fuel tank in the usual way... */
+    draw_generic(o, w); /* draw the fuel tank in the usual way... */
 
-	/* if the player is close, draw a refueling hose... */
-	if (xdist <= HUMANOID_DIST*3 && ydist <= HUMANOID_DIST*5) {
-		x1 = o->x - game_state.x;
-		y1 = o->y - game_state.y + (SCREEN_HEIGHT/2);
-		x2 = player_target->x - game_state.x;
+        /* if the player is close, draw a refueling hose... */
+    if (xdist <= HUMANOID_DIST*3 && ydist <= HUMANOID_DIST*5) {
+        x1 = o->x - game_state.x;
+        y1 = o->y - game_state.y + (SCREEN_HEIGHT/2);
+        x2 = player_target->x - game_state.x;
 		y2 = player_target->y - game_state.y + (SCREEN_HEIGHT/2);
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, x1, y1, x2, y2);
+		#else
+		wwvi_draw_line(w, x1, y1, x2, y2, huex[o->color]);
+		#endif
 	}
 }
 
 /* draw a radar jammer */
+#ifndef N64
 void jammer_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void jammer_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, x2, y1, y2, x3, x4, x5;
 	draw_generic(o, w); /* will set the color too. */
@@ -3397,6 +3699,7 @@ void jammer_draw(struct game_obj_t *o, GtkWidget *w)
 	x2 = x5 + o->tsd.jammer.width;
 	x3 = x5 - (o->tsd.jammer.width >> 1);
 	x4 = x5 + (o->tsd.jammer.width >> 1);
+	#ifndef N64
 	wwvi_draw_line(w->window, gc, x1, y1, x2, y1); 
 	wwvi_draw_line(w->window, gc, x1, y2, x2, y2); 
 	wwvi_draw_line(w->window, gc, x1, y1, x1, y2); 
@@ -3407,9 +3710,27 @@ void jammer_draw(struct game_obj_t *o, GtkWidget *w)
 	wwvi_draw_line(w->window, gc, x1, y2+4, x2, y2+4); 
 	wwvi_draw_line(w->window, gc, x1, y2+8, x2, y2+8); 
 	wwvi_draw_line(w->window, gc, x1, y2+12, x2, y2+12); 
+	#else
+
+	wwvi_draw_line(disp, x1, y1, x2, y1, huex[o->color]); 
+	wwvi_draw_line(disp, x1, y2, x2, y2, huex[o->color]); 
+	wwvi_draw_line(disp, x1, y1, x1, y2, huex[o->color]); 
+	wwvi_draw_line(disp, x2, y1, x2, y2, huex[o->color]); 
+	wwvi_draw_line(disp, x3, y1, x3, y2, huex[o->color]); 
+	wwvi_draw_line(disp, x4, y1, x4, y2, huex[o->color]); 
+	wwvi_draw_line(disp, x5, y1, x5, y2, huex[o->color]); 
+	wwvi_draw_line(disp, x1, y2+4, x2, y2+4, huex[o->color]); 
+	wwvi_draw_line(disp, x1, y2+8, x2, y2+8, huex[o->color]); 
+	wwvi_draw_line(disp, x1, y2+12, x2, y2+12, huex[o->color]); 
+
+	#endif
 }
 
+#ifndef N64
 void cron_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void cron_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, y1, x2, y2, gy, xi;
 
@@ -3433,8 +3754,12 @@ void cron_draw(struct game_obj_t *o, GtkWidget *w)
 	x1 = o->x - game_state.x + o->tsd.cron.eyepos;
 	y1 = o->y - game_state.y + (SCREEN_HEIGHT/2) - 5;  
 	x2 = x1 + 3;
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[WHITE]);
 	wwvi_draw_line(w->window, gc, x1, y1, x2, y1); /* draw eye */
+	#else
+	wwvi_draw_line(w, x1, y1, x2, y1, huex[WHITE]); /* draw eye */
+	#endif
 
 	/* move the cron job's eye */
 	o->tsd.cron.eyepos +=1;
@@ -3451,15 +3776,22 @@ void cron_draw(struct game_obj_t *o, GtkWidget *w)
 			if (xi != -1) {
 				y1 = o->y + 7 - game_state.y + (SCREEN_HEIGHT/2);  
 				y2 = gy + (SCREEN_HEIGHT/2) - game_state.y;
+				#ifndef N64
 				wwvi_bright_line(w->window, gc, x1, y1, x2, y2,
 					randomn(NCOLORS+NSPARKCOLORS+NRAINBOWCOLORS));  /* draw beam. */
+				#else
+				wwvi_bright_line(w, x1, y1, x2, y2, huex[randomn(NCOLORS+NSPARKCOLORS+NRAINBOWCOLORS)]);  /* draw beam. */
+				#endif
 				explode(o->x + o->tsd.cron.beam_pos, gy, 0, 1, 20, 3, 10); /* make sparks. */
 			}
 		}
 	}
 }
-
+#ifndef N64
 void gdb_draw(struct game_obj_t *o, GtkWidget *w) /* draw a gdb. */
+#else
+void gdb_draw(struct game_obj_t *o, surface_t *w) /* draw a gdb. */
+#endif
 {
 	/* make him point left or right, depending which way he's going. */
 	if (o->vx < 0)		
@@ -3470,7 +3802,11 @@ void gdb_draw(struct game_obj_t *o, GtkWidget *w) /* draw a gdb. */
 }
 
 /* recursive routine to draw a fractal lightning bolt between x1,y1 and x2,y2 */
+#ifndef N64
 void lightning_draw( GtkWidget *w, int x1, int y1, int x2, int y2) 
+#else
+void lightning_draw( surface_t *w, int x1, int y1, int x2, int y2) 
+#endif
 {
 	int x3, y3, dx, dy;
 
@@ -3479,6 +3815,7 @@ void lightning_draw( GtkWidget *w, int x1, int y1, int x2, int y2)
 
 	/* terminal case, x1, y1, and x2, y2 are very close, just draw a line. */
 	if (dx < 10 && dy < 10) {
+		#ifndef N64 
 		gdk_gc_set_foreground(gc, &huex[WHITE]);
 		wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
 		if (dx < dy) {
@@ -3494,6 +3831,20 @@ void lightning_draw( GtkWidget *w, int x1, int y1, int x2, int y2)
 			wwvi_draw_line(w->window, gc, x1, y1-2, x2, y2-1); 
 			wwvi_draw_line(w->window, gc, x1, y1+2, x2, y2+1); 
 		}
+		#else
+		wwvi_draw_line(w, x1, y1, x2, y2, huex[WHITE]); 
+		if (dx < dy) {
+			wwvi_draw_line(w, x1-1, y1, x2-1, y2, huex[WHITE]); 
+			wwvi_draw_line(w, x1+1, y1, x2+1, y2, huex[WHITE]); 
+			wwvi_draw_line(w, x1-2, y1, x2-2, y2, huex[BLUE]); 
+			wwvi_draw_line(w, x1+2, y1, x2+2, y2, huex[BLUE]); 
+		} else {
+			wwvi_draw_line(w, x1, y1-1, x2, y2-1, huex[WHITE]); 
+			wwvi_draw_line(w, x1, y1+1, x2, y2+1, huex[WHITE]); 
+			wwvi_draw_line(w, x1, y1-2, x2, y2-1, huex[BLUE]); 
+			wwvi_draw_line(w, x1, y1+2, x2, y2+1, huex[BLUE]); 
+		}
+		#endif
 		return;
 	}
 	if (dy < 9)
@@ -3524,59 +3875,77 @@ void lightning_draw( GtkWidget *w, int x1, int y1, int x2, int y2)
 	lightning_draw(w, x3, y3, x2, y2);	
 }
 
-
+#ifndef N64
 static void xy_draw_string(GtkWidget *w, char *s, int font, int x, int y) ;
 void floating_message_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+static void xy_draw_string(surface_t *w, char *s, int font, int x, 
+				int y, uint32_t color);
+void floating_message_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	/* draw a floating message -- a game object that is text living in game coords. */
 	/* this is for bonus scores, "Help!" and "Woohoo!" messages the .swp files "say." */
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
 	xy_draw_string(w, (char *) o->tsd.floating_message.msg, 
 		o->tsd.floating_message.font, o->x, o->y) ;
+	#else
+	xy_draw_string(w, (char *) o->tsd.floating_message.msg, 
+		o->tsd.floating_message.font, o->x, o->y, huex[o->color]) ;	
+	#endif
 }
-
+#ifndef N64
 void tentacle_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void tentacle_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int i;
 	int x1, y1, x2, y2;
+	COLOR_TYPE color = huex[o->color];
 	int angle = 0;
-	int thickness = o->tsd.tentacle.nsegs >> 1;
+	#ifdef OPENLASE
+	int thickness = o->tsd.tentacle->nsegs >> 1;
+	#endif
 
 	x2 = 0; /* make compiler happy */
 	y2 = 0; /* make compiler happy */
 
 	/* draw each tentacle, accumulating relative angles as you go, */
 	/* alternating colors of segments between yellow and blue.  */
-	gdk_gc_set_foreground(gc, &huex[o->color]);
+
 	x1 = o->x - game_state.x;
 	y1 = o->y - game_state.y + (SCREEN_HEIGHT/2);  
-	for (i=0;i<o->tsd.tentacle.nsegs;i++) {
-		angle = angle + o->tsd.tentacle.seg[i].angle;
+	for (i=0;i<o->tsd.tentacle->nsegs;i++) {
+		angle = angle + o->tsd.tentacle->seg[i].angle;
 		if (angle < 0)
 			angle += 360;
 		else if (angle > 360)
 			angle -= 360;
-		x2 = x1 + cosine[angle] * o->tsd.tentacle.seg[i].length; 
-		y2 = y1 -   sine[angle] * o->tsd.tentacle.seg[i].length; 
+		x2 = x1 + cosine[angle] * o->tsd.tentacle->seg[i].length; 
+		y2 = y1 -   sine[angle] * o->tsd.tentacle->seg[i].length; 
 	
-		switch (o->tsd.tentacle.color_scheme) {
+		switch (o->tsd.tentacle->color_scheme) {
 		case 0: 
 			if ((i % 2) == 1)
-				gdk_gc_set_foreground(gc, &huex[o->color]);
+				color = huex[o->color];
 			else
-				gdk_gc_set_foreground(gc, &huex[o->tsd.tentacle.other_color]);
+				color = huex[o->tsd.tentacle->other_color];
 			break;
 		case 1:
-			gdk_gc_set_foreground(gc, &huex[((1000-i+(timer >> 1)) % NSPARKCOLORS) + NCOLORS]);
+			color = huex[((1000-i+(timer >> 1)) % NSPARKCOLORS) + NCOLORS];
 			break;
 		case 2:
-			/* gdk_gc_set_foreground(gc, &huex[NCOLORS + NSPARKCOLORS + (i * NRAINBOWCOLORS)/o->tsd.tentacle.nsegs]); */
-			gdk_gc_set_foreground(gc, &huex[NCOLORS + NSPARKCOLORS + (((1000-i+(timer >> 2)) + ((i & 0x01)*4)) % NRAINBOWCOLORS)]);
+			/* gdk_gc_set_foreground(gc, &huex[NCOLORS + NSPARKCOLORS + (i * NRAINBOWCOLORS)/o->tsd.tentacle->nsegs]); */
+			color = huex[NCOLORS + NSPARKCOLORS + (((1000-i+(timer >> 2)) + ((i & 0x01)*4)) % NRAINBOWCOLORS)];
 			break;
 		default: /* constant color */
 			break;
 		}
-#ifndef OPENLASE
+#ifndef N64
+		gdk_gc_set_foreground(gc, &color);
+#ifdef OPENLASE
 		if (thickness > 0) {
 			wwvi_draw_line(w->window, gc, x1-thickness, y1, x2-thickness, y2); 
 			wwvi_draw_line(w->window, gc, x1+thickness, y1, x2+thickness, y2); 
@@ -3587,6 +3956,9 @@ void tentacle_draw(struct game_obj_t *o, GtkWidget *w)
 		} else 
 #endif
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+#else
+		wwvi_draw_line(w, x1, y1, x2, y2, color); 
+#endif
 		x1 = x2;
 		y1 = y2;
 	}
@@ -3621,7 +3993,7 @@ void tentacle_move(struct game_obj_t *o)
 		return;
 
 	/* loose tentacle? */
-	if (o->tsd.tentacle.attached_to == NULL) {	
+	if (o->tsd.tentacle->attached_to == NULL) {	
 		o->x += o->vx;
 		o->y += o->vy;
 
@@ -3646,17 +4018,17 @@ void tentacle_move(struct game_obj_t *o)
 	} else {
 		/* attached tentacles don't fall, but remain with whatever they're */
 		/* attached to, usually an octopus head. */
-		o->x = o->tsd.tentacle.attached_to->x;
-		o->y = o->tsd.tentacle.attached_to->y;
+		o->x = o->tsd.tentacle->attached_to->x;
+		o->y = o->tsd.tentacle->attached_to->y;
 	}
 
-	for (i=0;i<o->tsd.tentacle.nsegs;i++) { /* for each segment of the tentacle.... */
+	for (i=0;i<o->tsd.tentacle->nsegs;i++) { /* for each segment of the tentacle->... */
 		int da;
 
 		/* set the angular velocity to move the segment towards it's desired angle. */
-		t = &o->tsd.tentacle.seg[i];
+		t = &o->tsd.tentacle->seg[i];
 		if (i==0)
-			t->dest_angle = o->tsd.tentacle.angle;
+			t->dest_angle = o->tsd.tentacle->angle;
 
 		da = (t->dest_angle - t->angle);
 		if (da > 20)
@@ -3700,11 +4072,11 @@ void tentacle_move(struct game_obj_t *o)
 	if (randomn(1000) < 50) { /* every once in awhile... */
 
 		/* change the tentacle's idea of what a desirable angle is. */
-		o->tsd.tentacle.angle = TENTACLE_RANGE(o->tsd.tentacle);
-		if (o->tsd.tentacle.angle < 0)
-			o->tsd.tentacle.angle += 360; 
-		if (o->tsd.tentacle.angle > 360)
-			o->tsd.tentacle.angle -= 360; 
+		o->tsd.tentacle->angle = TENTACLE_RANGE(o->tsd.tentacle);
+		if (o->tsd.tentacle->angle < 0)
+			o->tsd.tentacle->angle += 360; 
+		if (o->tsd.tentacle->angle > 360)
+			o->tsd.tentacle->angle -= 360; 
 
 		/* set the tentacle's segments' desired angles... */
 		switch (randomn(11)) {
@@ -3712,21 +4084,21 @@ void tentacle_move(struct game_obj_t *o)
 			/* mostly, set tentacle segment desired angles  */
 			/* to random values, but in range... */
 		case 4:
-			for (i=1;i<o->tsd.tentacle.nsegs;i++) {
-				t = &o->tsd.tentacle.seg[i];
+			for (i=1;i<o->tsd.tentacle->nsegs;i++) {
+				t = &o->tsd.tentacle->seg[i];
 				t->dest_angle = randomn(2 * MAX_SEG_ANGLE) - MAX_SEG_ANGLE;
 			}
 			break;
-		case 10: if (o->tsd.tentacle.attached_to == NULL) {
+		case 10: if (o->tsd.tentacle->attached_to == NULL) {
 				/* sometimes, straighten a tentacle out, */
 				/* and make it jump in the direction */
 				/* it's pointing... very weird. */
-				for (i=1;i<o->tsd.tentacle.nsegs;i++) {
-					t = &o->tsd.tentacle.seg[i];
+				for (i=1;i<o->tsd.tentacle->nsegs;i++) {
+					t = &o->tsd.tentacle->seg[i];
 					t->dest_angle = 0;
 				}
-				o->vx = cosine[o->tsd.tentacle.angle] * 20;
-				o->vy = -sine[o->tsd.tentacle.angle] * 20;
+				o->vx = cosine[o->tsd.tentacle->angle] * 20;
+				o->vy = -sine[o->tsd.tentacle->angle] * 20;
 			}
 			break;
 		case 0:
@@ -3741,10 +4113,10 @@ void tentacle_move(struct game_obj_t *o)
 				int curvedir = randomn(100) < 50 ? -1 : 1;
 				int delta = randomn(10);
 				temper = (randomn(40) + 60.0) / 100.0;
-				t = &o->tsd.tentacle.seg[o->tsd.tentacle.nsegs-1];
+				t = &o->tsd.tentacle->seg[o->tsd.tentacle->nsegs-1];
 				t->dest_angle = curvedir * MAX_SEG_ANGLE; 
-				for (i=o->tsd.tentacle.nsegs-1;i>0;i--) {
-					t = &o->tsd.tentacle.seg[i-1];
+				for (i=o->tsd.tentacle->nsegs-1;i>0;i--) {
+					t = &o->tsd.tentacle->seg[i-1];
 					t[0].dest_angle = t[1].dest_angle * temper + -curvedir * delta; 
 				}
 				break;
@@ -4530,7 +4902,11 @@ static void kill_and_debris_object(struct game_obj_t *o)
 int find_free_obj(void);
 
 void laser_move(struct game_obj_t *o);
+#ifndef N64
 void laser_draw(struct game_obj_t *o,  GtkWidget *w);
+#else
+void laser_draw(struct game_obj_t *o,  surface_t *w);
+#endif
 void generic_destroy_func(struct game_obj_t *o);
 
 void player_fire_laser(void)
@@ -4707,11 +5083,11 @@ void octopus_destroy(struct game_obj_t *o)
 		struct game_obj_t *tentacle;
 		tentacle = o->tsd.octopus.tentacle[i];
 		if (tentacle) {
-			tentacle->tsd.tentacle.attached_to = NULL;
+			tentacle->tsd.tentacle->attached_to = NULL;
 			tentacle->vx = randomn(40)-20;
 			tentacle->vy = randomn(40)-20;
-			tentacle->tsd.tentacle.upper_angle = 170;
-			tentacle->tsd.tentacle.lower_angle = 10;
+			tentacle->tsd.tentacle->upper_angle = 170;
+			tentacle->tsd.tentacle->lower_angle = 10;
 			o->tsd.octopus.tentacle[i] = NULL;
 		}
 	}
@@ -5438,10 +5814,12 @@ void drop_gravity_bomb(void)
 	}
 	game_state.cmd_multiplier = 1;
 }
-
+#ifndef N64
 void player_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void player_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
-
 	int i, countdir;
 	double scale, scalefactor;
 #ifndef OPENLASE
@@ -5471,19 +5849,24 @@ void player_draw(struct game_obj_t *o, GtkWidget *w)
 		for (i = 0; i<o->tsd.epd.count2; i++) {
 			int j;
 			int x1, y1, x2, y2;
-			gdk_gc_set_foreground(gc, &huex[o->color]);
+			int color = o->color;
 			for (j=0;j<o->v->npoints-1;j++) {
 				if (o->v->p[j+1].x == LINE_BREAK) /* Break in the line segments. */
 					j+=2;
 				if (o->v->p[j].x == COLOR_CHANGE) {
-					gdk_gc_set_foreground(gc, &huex[o->v->p[j].y]);
+					color = o->v->p[j].y;
 					j+=1;
 				}
 				x1 = o->x + o->v->p[j].x*scale - game_state.x;
 				y1 = o->y + o->v->p[j].y*scale - game_state.y + (SCREEN_HEIGHT/2);  
 				x2 = o->x + o->v->p[j+1].x*scale - game_state.x; 
 				y2 = o->y + o->v->p[j+1].y*scale+(SCREEN_HEIGHT/2) - game_state.y;
+				#ifndef N64
+				gdk_gc_set_foreground(gc, &huex[color]);
 				wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+				#else
+				wwvi_draw_line(w, x1, y1, x2, y2, huex[color]); 
+				#endif
 			}
 			scale = scale * scalefactor;
 		}
@@ -5495,7 +5878,11 @@ void player_draw(struct game_obj_t *o, GtkWidget *w)
 	}
 }
 
+#ifndef N64
 void xmas_player_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void xmas_player_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 
 	int i, countdir, x1, y1, x2, y2;
@@ -5504,13 +5891,19 @@ void xmas_player_draw(struct game_obj_t *o, GtkWidget *w)
 	if (o->tsd.epd.count == 0) {  /* normal case, just draw the player normally. */
 		draw_generic(o, w);
 		if (o->bullseye != NULL) {
+			#ifndef N64
 			gdk_gc_set_foreground(gc, &huex[RED]);
+			#endif
 			x1 = o->x - game_state.x;
 			y1 = o->y - game_state.y + (SCREEN_HEIGHT/2);  
 			x2 = o->bullseye->x - game_state.x;
 			y2 = o->bullseye->y - game_state.y + (SCREEN_HEIGHT/2);  
 			if (x1 > 0 && x1 < SCREEN_WIDTH && y1 < SCREEN_HEIGHT && y1 > 0) {
+				#ifndef N64
 				wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+				#else
+				wwvi_draw_line(w, x1, y1, x2, y2, huex[RED]); 
+				#endif
 			}
 		}
 		if (o->tsd.reindeer.rudolph && (timer & 0x08)) { /* blink rudolph's nose. */
@@ -5518,17 +5911,26 @@ void xmas_player_draw(struct game_obj_t *o, GtkWidget *w)
 			y1 = o->y - 4 -game_state.y +(SCREEN_HEIGHT/2);  
 			y2 = y1 - 2;  
 			x2 = x1 + game_state.direction;
+			#ifndef N64
 			gdk_gc_set_foreground(gc, &huex[WHITE]);
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y1); 
 			wwvi_draw_line(w->window, gc, x1, y2, x2, y2); 
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y1, huex[WHITE]); 
+			wwvi_draw_line(w, x1, y2, x2, y2, huex[WHITE]); 
+			#endif
 			--y1;
+			#ifndef N64
 			gdk_gc_set_foreground(gc, &huex[RED]);
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y1); 
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y1, huex[RED]); 
+			#endif
 		}
-	} else {
+	} 	else {
 		/* this is the insanity that makes the player "zoom" into the game */
 		/* at the start of levels. */
-		if (o->tsd.epd.count > 0) {
+		if (player->tsd.epd.count > 0) {
 			scale = 1.07;
 			scalefactor = 1.07;
 			countdir = 1;
@@ -5546,19 +5948,24 @@ void xmas_player_draw(struct game_obj_t *o, GtkWidget *w)
 		for (i = 0; i<o->tsd.epd.count2; i++) {
 			int j;
 			int x1, y1, x2, y2;
-			gdk_gc_set_foreground(gc, &huex[o->color]);
+			int color = o->color;
 			for (j=0;j<o->v->npoints-1;j++) {
 				if (o->v->p[j+1].x == LINE_BREAK) /* Break in the line segments. */
 					j+=2;
 				if (o->v->p[j].x == COLOR_CHANGE) {
-					gdk_gc_set_foreground(gc, &huex[o->v->p[j].y]);
+					color = o->v->p[j].y;
 					j+=1;
 				}
 				x1 = o->x + o->v->p[j].x*scale - game_state.x;
 				y1 = o->y + o->v->p[j].y*scale - game_state.y + (SCREEN_HEIGHT/2);  
 				x2 = o->x + o->v->p[j+1].x*scale - game_state.x; 
 				y2 = o->y + o->v->p[j+1].y*scale+(SCREEN_HEIGHT/2) - game_state.y;
+				#ifndef N64
+				gdk_gc_set_foreground(gc, &huex[color]);
 				wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+				#else
+				wwvi_draw_line(w, x1, y1, x2, y2, huex[color]); 
+				#endif
 			}
 			scale = scale * scalefactor;
 		}
@@ -5669,7 +6076,11 @@ void set_player_vect(void)
 }
 
 int new_high_score(int newscore);
+#ifndef N64
 void no_draw(struct game_obj_t *o, GtkWidget *w);
+#else
+void no_draw(struct game_obj_t *o, surface_t *w);
+#endif
 void player_move(struct game_obj_t *o)
 {
 	int deepest, i;
@@ -6021,11 +6432,16 @@ void no_move(__attribute__((unused)) struct game_obj_t *o)
 {
 	return;
 }
-
+#ifndef N64
 void laser_draw(struct game_obj_t *o,  GtkWidget *w)
+#else
+void laser_draw(struct game_obj_t *o,  surface_t *w)
+#endif
 {
 	int x1, y1, x2;
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
+	#endif
 	x1 = o->x - game_state.x;
 	y1 = o->y - game_state.y + (SCREEN_HEIGHT/2);  
 
@@ -6033,7 +6449,11 @@ void laser_draw(struct game_obj_t *o,  GtkWidget *w)
 		x2 = x1 - (15) * (21 - o->alive);
 	else
 		x2 = x1 + (15) * (21 - o->alive);
+	#ifndef N64
 	wwvi_bright_line(w->window, gc, x1, y1, x2, y1, o->color);
+	#else
+	wwvi_bright_line(w, x1, y1, x2, y1, huex[o->color]);
+	#endif
 
 #if DEBUG_HITZONE
 	gdk_gc_set_foreground(gc, &huex[WHITE]);
@@ -6258,8 +6678,11 @@ void move_obj(struct game_obj_t *o)
 	o->x += o->vx; /* generic move function */
 	o->y += o->vy;
 }
-
+#ifndef N64
 void bright_spark_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void bright_spark_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, y1, x2, y2;
 
@@ -6274,10 +6697,17 @@ void bright_spark_draw(struct game_obj_t *o, GtkWidget *w)
 
 	y2 = o->y + (SCREEN_HEIGHT/2) - game_state.y;
 	y1 = y2 + o->vy;
+	#ifndef N64
 	wwvi_bright_line(w->window, gc, x1, y1, x2, y2, o->color);
+	#else
+	wwvi_bright_line(w, x1, y1, x2, y2, huex[o->color]);
+	#endif
 }
-
+#ifndef N64
 void spark_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void spark_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, y1, x2, y2;
 
@@ -6292,11 +6722,19 @@ void spark_draw(struct game_obj_t *o, GtkWidget *w)
 
 	y2 = o->y + (SCREEN_HEIGHT/2) - game_state.y;
 	y1 = y2 + o->vy;
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
 	wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
-}
+	#else
+	wwvi_draw_line(w, x1, y1, x2, y2, huex[o->color]);
+	#endif
 
+}
+#ifndef N64
 void pixie_dust_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void pixie_dust_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, y1, x2, y2;
 
@@ -6308,11 +6746,18 @@ void pixie_dust_draw(struct game_obj_t *o, GtkWidget *w)
 		return;
 	y2 = o->y + (SCREEN_HEIGHT/2) - game_state.y;
 	y1 = y2 + randomn(4);
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
 	wwvi_draw_line(w->window, gc, x1, y1, x2, y2);
+	#else
+	wwvi_draw_line(w, x1, y1, x2, y2, huex[o->color]);
+	#endif
 }
-
+#ifndef N64
 void laserbolt_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void laserbolt_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, y1, x2, y2;
 
@@ -6328,10 +6773,17 @@ void laserbolt_draw(struct game_obj_t *o, GtkWidget *w)
 	y2 = o->y + (SCREEN_HEIGHT/2) - game_state.y;
 	y1 = y2 - o->vy;
 
+	#ifndef N64
 	wwvi_bright_line(w->window, gc, x1, y1, x2, y2, o->color);
+	#else
+	wwvi_bright_line(w, x1, y1, x2, y2, huex[o->color]);
+	#endif
 }
-
+#ifndef N64
 void missile_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void missile_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, y1;
 	int dx, dy;
@@ -6346,6 +6798,7 @@ void missile_draw(struct game_obj_t *o, GtkWidget *w)
 	rdy = dx / 16;
 	rdx2 = -dy / 4;
 	rdy2 = dx / 4;
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
 	if (x1 > 0 && x1+dx*2 > 0 && x1 < SCREEN_WIDTH &&  x1+dx*2 < SCREEN_WIDTH) {
 		wwvi_draw_line(w->window, gc, x1+rdx, y1+rdy, x1+dx*2+rdx, y1+dy*2+rdy); 
@@ -6355,9 +6808,22 @@ void missile_draw(struct game_obj_t *o, GtkWidget *w)
 		wwvi_draw_line(w->window, gc, x1-rdx2, y1-rdy2, x1+(dx/2), y1+(dy/2)); 
 		wwvi_draw_line(w->window, gc, x1+rdx2, y1+rdy2, x1+(dx/2), y1+(dy/2)); 
 	}
+	#else
+	if (x1 > 0 && x1+dx*2 > 0 && x1 < SCREEN_WIDTH &&  x1+dx*2 < SCREEN_WIDTH) {
+		wwvi_draw_line(w, x1+rdx, y1+rdy, x1+dx*2+rdx, y1+dy*2+rdy, huex[o->color]); 
+		wwvi_draw_line(w, x1-rdx, y1-rdy, x1+dx*2-rdx, y1+dy*2-rdy, huex[o->color]); 
+		wwvi_draw_line(w, x1+dx*2+rdx, y1+dy*2+rdy, x1+dx*2-rdx, y1+dy*2-rdy, huex[o->color]); 
+		wwvi_draw_line(w, x1-rdx2, y1-rdy2, x1+rdx2, y1+rdy2, huex[o->color]); 
+		wwvi_draw_line(w, x1-rdx2, y1-rdy2, x1+(dx/2), y1+(dy/2), huex[o->color]); 
+		wwvi_draw_line(w, x1+rdx2, y1+rdy2, x1+(dx/2), y1+(dy/2), huex[o->color]); 
+	}
+	#endif
 }
-
+#ifndef N64
 void harpoon_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void harpoon_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x1, y1;
 	int dx, dy;
@@ -6368,8 +6834,12 @@ void harpoon_draw(struct game_obj_t *o, GtkWidget *w)
 	y1 = o->y - game_state.y + (SCREEN_HEIGHT/2);  
 	dx = dx_from_vxy(o->vx, o->vy);
 	dy = -dy_from_vxy(o->vx, o->vy);
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
 	wwvi_draw_line(w->window, gc, x1, y1, x1+dx, y1+dy); 
+	#else
+	wwvi_draw_line(w, x1, y1, x1+dx, y1+dy, huex[o->color]);
+	#endif
 }
 
 void reindeer_move(struct game_obj_t *o)
@@ -6967,8 +7437,11 @@ void airship_leak_lisp(struct game_obj_t *o)
 			o->counter = strlen(randomlisp)-1;
 	}
 }
-
+#ifndef N64
 static void abs_xy_draw_string(GtkWidget *w, char *s, int font, int x, int y);
+#else
+static void abs_xy_draw_string(surface_t *w, char *s, int font, int x, int y, uint32_t color);
+#endif
 
 /* this is the text which scrolls up on the side of the blimp. */
 char *blimp_message[] = {
@@ -7065,15 +7538,20 @@ char *blimp_message[] = {
 "",
 NULL, /* mark the end. */
 }; 
+#ifndef N64
 void airship_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void airship_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
-	int x, y, i, line;
 
 	if (o->tsd.airship.pressure == 0)
 		draw_generic(o, w);
 	else
 		draw_scaled_generic(o, w, 1.0, 1.0 + 0.01 * o->tsd.airship.pressure);
 #ifndef OPENLASE
+	int x, y, i, line;
+
 	/* the -90 and -130 were arrived at empirically, as were the dimensions */
 	/* of the text field.  The commented out code below with 0123456... is */
 	/* part of the testing done to figure that out. */
@@ -7091,7 +7569,11 @@ void airship_draw(struct game_obj_t *o, GtkWidget *w)
 	for (i=0;i<7;i++) {
 		if (blimp_message[line] == NULL)
 			line = 0;
+		#ifndef N64
 		abs_xy_draw_string(w, blimp_message[line], NANO_FONT, x, y);
+		#else
+		abs_xy_draw_string(w, blimp_message[line], NANO_FONT, x, y, huex[WHITE]);
+		#endif
 		y = y + 15;
 		line++;
 	}
@@ -7104,8 +7586,11 @@ void airship_draw(struct game_obj_t *o, GtkWidget *w)
 	}
 #endif
 }
-
+#ifndef N64
 void worm_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void worm_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x, y, x2,y2;
 	int color;
@@ -7114,11 +7599,19 @@ void worm_draw(struct game_obj_t *o, GtkWidget *w)
 	y = o->y - game_state.y + (SCREEN_HEIGHT/2);
 	if (o->tsd.worm.parent == NULL) {
 		/* int x3, y3; */
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[o->color]);
 		wwvi_draw_line(w->window, gc, x-2, y, x, y-2); 
 		wwvi_draw_line(w->window, gc, x, y-2, x+2, y); 
 		wwvi_draw_line(w->window, gc, x+2, y, x, y+2); 
 		wwvi_draw_line(w->window, gc, x, y+2, x-2, y); 
+		#else
+		wwvi_draw_line(w, x-2, y, x, y-2, huex[o->color]); 
+		wwvi_draw_line(w, x, y-2, x+2, y, huex[o->color]); 
+		wwvi_draw_line(w, x+2, y, x, y+2, huex[o->color]); 
+		wwvi_draw_line(w, x, y+2, x-2, y, huex[o->color]); 
+		#endif
+
 /*
 		x3 = o->tsd.worm.tx - game_state.x;
 		y3 = o->tsd.worm.ty - game_state.y + (SCREEN_HEIGHT/2);
@@ -7129,6 +7622,7 @@ void worm_draw(struct game_obj_t *o, GtkWidget *w)
 */
 	} else {
 		color = NCOLORS + NSPARKCOLORS + ((timer + o->tsd.worm.coloroffset) % NRAINBOWCOLORS);
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[color]);
 		if (o->tsd.worm.child == NULL) {
 			wwvi_draw_line(w->window, gc, x-2, y, x, y-2); 
@@ -7136,6 +7630,14 @@ void worm_draw(struct game_obj_t *o, GtkWidget *w)
 			wwvi_draw_line(w->window, gc, x+2, y, x, y+2); 
 			wwvi_draw_line(w->window, gc, x, y+2, x-2, y); 
 		}
+		#else
+		if (o->tsd.worm.child == NULL) {
+			wwvi_draw_line(w, x-2, y, x, y-2, huex[color]); 
+			wwvi_draw_line(w, x, y-2, x+2, y, huex[color]); 
+			wwvi_draw_line(w, x+2, y, x, y+2, huex[color]); 
+			wwvi_draw_line(w, x, y+2, x-2, y, huex[color]); 
+		}
+		#endif
 	}
 
 #if 0
@@ -7159,10 +7661,17 @@ void worm_draw(struct game_obj_t *o, GtkWidget *w)
 
 		x2 = o->tsd.worm.parent->x - game_state.x;
 		y2 = o->tsd.worm.parent->y - game_state.y + (SCREEN_HEIGHT/2);
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, x-delta1, y, x2-delta2, y2);
 		wwvi_draw_line(w->window, gc, x+delta1, y, x2+delta2, y2);
 		wwvi_draw_line(w->window, gc, x, y-delta1, x2, y2-delta2);
 		wwvi_draw_line(w->window, gc, x, y+delta1, x2, y2+delta2);
+		#else
+		wwvi_draw_line(w, x-delta1, y, x2-delta2, y2, huex[o->color]);
+		wwvi_draw_line(w, x+delta1, y, x2+delta2, y2, huex[o->color]);
+		wwvi_draw_line(w, x, y-delta1, x2, y2-delta2, huex[o->color]);
+		wwvi_draw_line(w, x, y+delta1, x2, y2+delta2, huex[o->color]);
+		#endif
 	}
 }
 
@@ -7366,8 +7875,11 @@ void make_gunwheel_sound(void)
 		wwviaudio_add_sound(GUNWHEEL);
 	}
 }
-
+#ifndef N64
 void gunwheel_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void gunwheel_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int angle, x1, y1, x2, y2, rx, ry;
 
@@ -7385,13 +7897,19 @@ void gunwheel_draw(struct game_obj_t *o, GtkWidget *w)
 	x2 -= game_state.x;
 	y1 = y1 - game_state.y + (SCREEN_HEIGHT/2);  
 	y2 = y2 - game_state.y + (SCREEN_HEIGHT/2);  
-
+#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
 
 	wwvi_draw_line(w->window, gc, x1-rx, y1-ry, x2-rx, y2-ry);
 	wwvi_draw_line(w->window, gc, x1+rx, y1+ry, x2+rx, y2+ry);
 	wwvi_draw_line(w->window, gc, x1-rx, y1-ry, x1+rx, y1+ry);
 	wwvi_draw_line(w->window, gc, x2-rx, y2-ry, x2+rx, y2+ry);
+#else
+	wwvi_draw_line(w, x1-rx, y1-ry, x2-rx, y2-ry, huex[o->color]);
+	wwvi_draw_line(w, x1+rx, y1+ry, x2+rx, y2+ry, huex[o->color]);
+	wwvi_draw_line(w, x1-rx, y1-ry, x1+rx, y1+ry, huex[o->color]);
+	wwvi_draw_line(w, x2-rx, y2-ry, x2+rx, y2+ry, huex[o->color]);
+#endif
 
 	make_gunwheel_sound();
 }
@@ -7751,24 +8269,35 @@ void init_vects(void)
 	setup_vect(socket_vect, socket_points);
 
 	/* Make the line segment lists from the stroke_t structures. */
-	wwvi_make_font(&gamefont[BIG_FONT], font_scale[BIG_FONT], font_scale[BIG_FONT]);
-	wwvi_make_font(&gamefont[SMALL_FONT], font_scale[SMALL_FONT], font_scale[SMALL_FONT]);
-	wwvi_make_font(&gamefont[TINY_FONT], font_scale[TINY_FONT], font_scale[TINY_FONT]);
-	wwvi_make_font(&gamefont[NANO_FONT], font_scale[NANO_FONT], font_scale[NANO_FONT]);
+	assert(wwvi_make_font(&gamefont[BIG_FONT], font_scale[BIG_FONT], font_scale[BIG_FONT]) != -1);
+	assert(wwvi_make_font(&gamefont[SMALL_FONT], font_scale[SMALL_FONT], font_scale[SMALL_FONT]) != -1);
+	assert(wwvi_make_font(&gamefont[TINY_FONT], font_scale[TINY_FONT], font_scale[TINY_FONT]) != -1);
+	assert(wwvi_make_font(&gamefont[NANO_FONT], font_scale[NANO_FONT], font_scale[NANO_FONT]) != -1);
 	set_font(BIG_FONT);
 }
-
 void no_draw(__attribute__((unused)) struct game_obj_t *o,
+#ifndef N64
 	__attribute__((unused)) GtkWidget *w)
+	#else
+	__attribute__((unused)) surface_t *w)
+#endif
 {
 	return;
 }
 
+
 void draw_abs_scaled_generic(int x, int y, 
+#ifndef N64
 	struct my_vect_obj *v, GtkWidget *w, float xscale, float yscale)
+#else
+	struct my_vect_obj *v, surface_t *w, float xscale, float yscale)
+#endif
 {
 	int j;
 	int x1, y1, x2, y2;
+	#ifdef N64
+	int color = huex[WHITE];
+	#endif
 	x1 = x + (v->p[0].x * xscale);
 	y1 = y + (v->p[0].y * yscale);  
 	for (j=0;j<v->npoints-1;j++) {
@@ -7778,7 +8307,11 @@ void draw_abs_scaled_generic(int x, int y,
 			y1 = y + (v->p[j].y * yscale);  
 		}
 		if (v->p[j].x == COLOR_CHANGE) {
+			#ifndef N64
 			gdk_gc_set_foreground(gc, &huex[v->p[j].y]);
+			#else
+			color = huex[v->p[j].y];
+			#endif
 			j+=1;
 			x1 = x + (v->p[j].x * xscale);
 			y1 = y + (v->p[j].y * yscale);  
@@ -7786,7 +8319,11 @@ void draw_abs_scaled_generic(int x, int y,
 		x2 = x + (v->p[j+1].x * xscale); 
 		y2 = y + (v->p[j+1].y * yscale);
 		if (x1 > 0 && x2 > 0)
-			wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+			#ifndef N64		
+			wwvi_draw_line(w->window, gc, x1, y1, x2, y2);
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y2, huex[color]); 
+			#endif
 		x1 = x2;
 		y1 = y2;
 	}
@@ -7796,11 +8333,19 @@ void draw_abs_scaled_generic(int x, int y,
  * breaks and color changes...   This one scales in x, y.
  * It's used for drawing blimps which are overpressurized.
  */
+#ifndef N64
 void draw_scaled_generic(struct game_obj_t *o, GtkWidget *w, float xscale, float yscale)
+#else
+void draw_scaled_generic(struct game_obj_t *o, surface_t *w, float xscale, float yscale)
+#endif
 {
 	int j;
 	int x1, y1, x2, y2;
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
+	#else
+	uint32_t color = huex[o->color];
+	#endif
 	x1 = o->x + (o->v->p[0].x * xscale) - game_state.x;
 	y1 = o->y + (o->v->p[0].y * yscale) - game_state.y + (SCREEN_HEIGHT/2);  
 	for (j=0;j<o->v->npoints-1;j++) {
@@ -7810,7 +8355,11 @@ void draw_scaled_generic(struct game_obj_t *o, GtkWidget *w, float xscale, float
 			y1 = o->y + (o->v->p[j].y * yscale) - game_state.y + (SCREEN_HEIGHT/2);  
 		}
 		if (o->v->p[j].x == COLOR_CHANGE) {
+			#ifndef N64
 			gdk_gc_set_foreground(gc, &huex[o->v->p[j].y]);
+			#else
+			color = huex[o->v->p[j].y];
+			#endif
 			j+=1;
 			x1 = o->x + (o->v->p[j].x * xscale) - game_state.x;
 			y1 = o->y + (o->v->p[j].y * yscale) - game_state.y + (SCREEN_HEIGHT/2);  
@@ -7818,7 +8367,11 @@ void draw_scaled_generic(struct game_obj_t *o, GtkWidget *w, float xscale, float
 		x2 = o->x + (o->v->p[j+1].x * xscale) - game_state.x; 
 		y2 = o->y + (o->v->p[j+1].y * yscale) +(SCREEN_HEIGHT/2) - game_state.y;
 		if (x1 > 0 && x2 > 0)
+			#ifndef N64
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y2, color); 
+			#endif
 		x1 = x2;
 		y1 = y2;
 	}
@@ -7829,7 +8382,11 @@ void draw_scaled_generic(struct game_obj_t *o, GtkWidget *w, float xscale, float
  * so try to make sure it's fast.  There is an inline version
  * of this in draw_objs(), btw. 
  */
+#ifndef N64
 void draw_generic(struct game_obj_t *o, GtkWidget *w)
+#else
+void draw_generic(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int j;
 	int x1, y1, x2, y2;
@@ -7850,7 +8407,11 @@ void draw_generic(struct game_obj_t *o, GtkWidget *w)
 		}
 	}
 #endif
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
+	#else
+	uint32_t color = huex[o->color];
+	#endif
 	x1 = o->x + o->v->p[0].x - game_state.x;
 	y1 = o->y + o->v->p[0].y - game_state.y + (SCREEN_HEIGHT/2);  
 	for (j=0;j<o->v->npoints-1;j++) {
@@ -7860,7 +8421,11 @@ void draw_generic(struct game_obj_t *o, GtkWidget *w)
 			y1 = o->y + o->v->p[j].y - game_state.y + (SCREEN_HEIGHT/2);  
 		}
 		if (o->v->p[j].x == COLOR_CHANGE) {
+			#ifndef N64
 			gdk_gc_set_foreground(gc, &huex[o->v->p[j].y]);
+			#else
+			color = huex[o->v->p[j].y];
+			#endif
 			j+=1;
 			x1 = o->x + o->v->p[j].x - game_state.x;
 			y1 = o->y + o->v->p[j].y - game_state.y + (SCREEN_HEIGHT/2);  
@@ -7868,7 +8433,11 @@ void draw_generic(struct game_obj_t *o, GtkWidget *w)
 		x2 = o->x + o->v->p[j+1].x - game_state.x; 
 		y2 = o->y + o->v->p[j+1].y+(SCREEN_HEIGHT/2) - game_state.y;
 		if (x1 > 0 && x2 > 0)
+			#ifndef N64
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y2, color); 
+			#endif
 		x1 = x2;
 		y1 = y2;
 	}
@@ -7978,11 +8547,18 @@ void truss_cut_loose_whats_below(struct game_obj_t *o, struct game_obj_t *bomb)
 	if (p && p->otype == OBJ_TYPE_TRUSS)
 		p->tsd.truss.below = NULL;
 }
-
+#ifndef N64
 void truss_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void truss_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int x, y, x1, y1, x2, y2, x3, y3, x4, y4;
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[o->color]);
+	#else
+	uint32_t color = huex[o->color];
+	#endif
 
 	x = o->x - game_state.x;
 	y = o->y - game_state.y + (SCREEN_HEIGHT/2);  
@@ -7999,6 +8575,7 @@ void truss_draw(struct game_obj_t *o, GtkWidget *w)
 	x4 = x + o->tsd.truss.bottom_width / 2; /* bottom right corner */
 	y4 = y + o->tsd.truss.height / 2;
 
+#ifndef N64
 	wwvi_draw_line(w->window, gc, x3, y3, x1, y1);
 	wwvi_draw_line(w->window, gc, x1, y1, x2, y2);
 	wwvi_draw_line(w->window, gc, x2, y2, x4, y4);
@@ -8007,9 +8584,18 @@ void truss_draw(struct game_obj_t *o, GtkWidget *w)
 	wwvi_draw_line(w->window, gc, x2, y2, x3, y3);
 	wwvi_draw_line(w->window, gc, x3, y3, x4, y4);
 #endif
+#else
+	wwvi_draw_line(w, x3, y3, x1, y1, color);
+	wwvi_draw_line(w, x1, y1, x2, y2, color);
+	wwvi_draw_line(w, x2, y2, x4, y4, color);
+	wwvi_draw_line(w, x4, y4, x1, y1, color);
+#endif
 }
-
+#ifndef N64
 void tesla_tower_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void tesla_tower_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int i, x1, y1, x2, y2, x;
 
@@ -8036,8 +8622,11 @@ void tesla_tower_draw(struct game_obj_t *o, GtkWidget *w)
 		lightning_draw(w, x1, y1, x2, y2);
 	}
 }
-
+#ifndef N64
 void kgun_draw(struct game_obj_t *o, GtkWidget *w)
+#else
+void kgun_draw(struct game_obj_t *o, surface_t *w)
+#endif
 {
 	int dx, dy;
 	int x1, y1;
@@ -8059,9 +8648,13 @@ void kgun_draw(struct game_obj_t *o, GtkWidget *w)
 	x1 = o->x-5 - game_state.x;
 	y1 = o->y+(5*invert) - game_state.y + (SCREEN_HEIGHT/2);  
 	crossbeam_y = y1 + (20*invert);
-
+	#ifndef N64
 	wwvi_draw_line(w->window, gc, x1, y1, x1+5, crossbeam_y); 
 	wwvi_draw_line(w->window, gc, x1+10, y1, x1+6, crossbeam_y);
+	#else
+	wwvi_draw_line(w, x1, y1, x1+5, crossbeam_y, huex[o->color]); 
+	wwvi_draw_line(w, x1+10, y1, x1+6, crossbeam_y, huex[o->color]); 
+	#endif
 
 	/* We're going to draw a swivelling dual gun turret.  Two */
 	/* guns mounted on a crossbeam that kind of swivel around */
@@ -8150,7 +8743,7 @@ void kgun_draw(struct game_obj_t *o, GtkWidget *w)
 	gunbackx += crossbeam_x1 + recoilx;
 	guntipy += crossbeam_y + recoily;
 	gunbacky += crossbeam_y + recoily;
-
+	#ifndef N64
 	/* draw the crossbeam */	
 	wwvi_draw_line(w->window, gc, crossbeam_x1, crossbeam_y, crossbeam_x2, crossbeam_y);
 
@@ -8180,6 +8773,37 @@ void kgun_draw(struct game_obj_t *o, GtkWidget *w)
 			crossbeam_x1+thickxo+recoilx, crossbeam_y+thickyo+recoily);
 	wwvi_draw_line(w->window, gc, gunbackx+thickxo+xoffset, gunbacky+thickyo, 
 			crossbeam_x1+thickxo+xoffset+recoilx, crossbeam_y+thickyo+recoily);
+	#else
+		/* draw the crossbeam */	
+	wwvi_draw_line(w, crossbeam_x1, crossbeam_y, crossbeam_x2, crossbeam_y, huex[o->color]);
+
+	/* draw the main barrels */
+	wwvi_draw_line(w, gunbackx, gunbacky, guntipx, guntipy, huex[o->color]);
+	wwvi_draw_line(w, gunbackx+xoffset, gunbacky, guntipx+xoffset, guntipy, huex[o->color]);
+
+	/* draw the back edges of the gun butts */
+	wwvi_draw_line(w, gunbackx-thickxo, gunbacky-thickyo, 
+			gunbackx+thickxo, gunbacky+thickyo, huex[o->color]);
+	wwvi_draw_line(w, gunbackx-thickxo+xoffset, gunbacky-thickyo, 
+			gunbackx+thickxo+xoffset, gunbacky+thickyo, huex[o->color]);
+	/* draw the front edges of the gun butts */
+	wwvi_draw_line(w, crossbeam_x1-thickxo+recoilx, crossbeam_y-thickyo+recoily, 
+			crossbeam_x1+thickxo+recoilx, crossbeam_y+thickyo+recoily, huex[o->color]);
+	wwvi_draw_line(w, crossbeam_x1-thickxo+xoffset+recoilx, 
+			crossbeam_y-thickyo+recoily, 
+			crossbeam_x1+thickxo+xoffset+recoilx, 
+			crossbeam_y+thickyo+recoily, huex[o->color]);
+
+	/* draw the long sides of the gun butts */
+	wwvi_draw_line(w, gunbackx-thickxo, gunbacky-thickyo, 
+			crossbeam_x1-thickxo+recoilx, crossbeam_y-thickyo+recoily, huex[o->color]);
+	wwvi_draw_line(w, gunbackx-thickxo+xoffset, gunbacky-thickyo, 
+			crossbeam_x1-thickxo+xoffset+recoilx, crossbeam_y-thickyo+recoily, huex[o->color]);
+	wwvi_draw_line(w, gunbackx+thickxo, gunbacky+thickyo, 
+			crossbeam_x1+thickxo+recoilx, crossbeam_y+thickyo+recoily, huex[o->color]);
+	wwvi_draw_line(w, gunbackx+thickxo+xoffset, gunbacky+thickyo, 
+			crossbeam_x1+thickxo+xoffset+recoilx, crossbeam_y+thickyo+recoily, huex[o->color]);
+	#endif
 	
 }
 
@@ -8221,8 +8845,11 @@ void init_radar_noise(void)
 		cradarnoise[i] = randomn(NCOLORS);
 	}
 }
-
+#ifndef N64
 static inline void draw_on_radar(GtkWidget *w, struct game_obj_t *o, int y_correction)
+#else
+static inline void draw_on_radar(surface_t *w, struct game_obj_t *o, int y_correction)
+#endif
 {
 	int radarx, radary;
 	int x1, x2, y1, y2; 
@@ -8270,6 +8897,7 @@ static inline void draw_on_radar(GtkWidget *w, struct game_obj_t *o, int y_corre
 			/* prominent. */
 			if ((timer & 0x04) == 0x04) /* make 'em blink */
 				return;
+			#ifndef N64
 			gdk_gc_set_foreground(gc, &huex[o->color]);
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
 			wwvi_draw_line(w->window, gc, x1, y2, x2, y1); 
@@ -8277,11 +8905,24 @@ static inline void draw_on_radar(GtkWidget *w, struct game_obj_t *o, int y_corre
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y1); 
 			wwvi_draw_line(w->window, gc, x2, y1, x2, y2); 
 			wwvi_draw_line(w->window, gc, x2, y2, x1, y2); 
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y2, huex[o->color]); 
+			wwvi_draw_line(w, x1, y2, x2, y1, huex[o->color]); 
+			wwvi_draw_line(w, x1, y2, x1, y1, huex[o->color]); 
+			wwvi_draw_line(w, x1, y1, x2, y1, huex[o->color]); 
+			wwvi_draw_line(w, x2, y1, x2, y2, huex[o->color]); 
+			wwvi_draw_line(w, x2, y2, x1, y2, huex[o->color]); 
+			#endif
 			return;
 		}
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[o->color]);
 		wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
 		wwvi_draw_line(w->window, gc, x1, y2, x2, y1); 
+		#else
+		wwvi_draw_line(w, x1, y1, x2, y2, huex[o->color]); 
+		wwvi_draw_line(w, x1, y2, x2, y1, huex[o->color]); 
+		#endif
 	}
 
 	/* Here's where we put noise on the screen. total_radar_noise */
@@ -8306,13 +8947,19 @@ static inline void draw_on_radar(GtkWidget *w, struct game_obj_t *o, int y_corre
 		/* paint the noise... */
 		for (i=0;i<noisecount;i++) {
 			int x1, y1, x2, y2;
+			
+			x1 = xradarnoise[nx]-2;
+			x2 = xradarnoise[nx]+2;
+			y1 = yradarnoise[ny]-2;
+			y2 = yradarnoise[ny]+2;
+			#ifndef N64
 			gdk_gc_set_foreground(gc, &huex[cradarnoise[nc]]);
-			x1 = xradarnoise[nx]-1;
-			x2 = xradarnoise[nx]+1;
-			y1 = yradarnoise[ny]-1;
-			y2 = yradarnoise[ny]+1;
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y2);
 			wwvi_draw_line(w->window, gc, x1, y2, x2, y1);
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y2, huex[cradarnoise[nc]]);
+			wwvi_draw_line(w, x1, y2, x2, y1, huex[cradarnoise[nc]]);
+			#endif
 			nx++; if (nx >= XRADARN) nx = 0;
 			ny++; if (ny >= YRADARN) ny = 0;
 			nc++; if (nc >= CRADARN) nc = 0;
@@ -8370,7 +9017,11 @@ static inline void debug_display_target_list_count(GtkWidget *w, int total)
 
 /* This gets called frame_rate_hz times every second (normally 30 times a sec) */
 /* by main_da_expose().  Don't do anything slow in here. */
+#ifndef N64
 void draw_objs(GtkWidget *w)
+#else
+void draw_objs(surface_t *w)
+#endif
 {
 	int i, radary;
 #ifdef DEBUG_TARGET_LIST
@@ -8404,7 +9055,11 @@ void draw_objs(GtkWidget *w)
 /* This is used by the "attract mode" screen for drawing the letters */
 /* livecursorx, and livecursory are coords of a "cursor" which this */
 /* routine automatically advances. */
+#ifndef N64
 static void draw_letter(GtkWidget *w, struct my_vect_obj **font, unsigned char letter)
+#else
+static void draw_letter(surface_t *w, struct my_vect_obj **font, unsigned char letter, uint32_t color)
+#endif
 {
 	int i, x1, y1, x2, y2;
 
@@ -8417,10 +9072,10 @@ static void draw_letter(GtkWidget *w, struct my_vect_obj **font, unsigned char l
 		livecursory += font_scale[current_font];
 		return;
 	}
+	assert(font != NULL);
 	if (font[letter] == NULL) {
 		return;
 	}
-
 	x1 = livecursorx + font[letter]->p[0].x;
 	y1 = livecursory + font[letter]->p[0].y;
 	for (i=0;i<font[letter]->npoints-1;i++) {
@@ -8431,7 +9086,11 @@ static void draw_letter(GtkWidget *w, struct my_vect_obj **font, unsigned char l
 		}
 		x2 = livecursorx + font[letter]->p[i+1].x;
 		y2 = livecursory + font[letter]->p[i+1].y;
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+		#else
+		wwvi_draw_line(w, x1, y1, x2, y2, color); 
+		#endif
 		/*wwvi_draw_line(w->window, gc, x1-1, y1+1, x2-1, y2+1); */
 		x1 = x2;
 		y1 = y2;
@@ -8440,21 +9099,34 @@ static void draw_letter(GtkWidget *w, struct my_vect_obj **font, unsigned char l
 }
 
 /* Draws a string for the "attract mode", */
+#ifndef N64
 static void draw_string(GtkWidget *w, unsigned char *s) 
+#else
+static void draw_string(surface_t *w, unsigned char *s, uint32_t color) 
+#endif
 {
 
 	unsigned char *i;
 
 	for (i=s;*i;i++)
-		draw_letter(w, gamefont[current_font], *i);  
+		#ifndef N64
+		draw_letter(w, gamefont[current_font], *i); 
+		#else
+		draw_letter(w, gamefont[current_font], *i, color); 
+		#endif 
 }
 
 /* draws a bunch of strings for the "attract mode." */
+#ifndef N64
 static void draw_strings(GtkWidget *w)
+#else
+static void draw_strings(surface_t *w)
+#endif
 {
 	int i;
-
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[WHITE]); /*&huex[current_color]);*/
+	#endif
 	for (i=0;i<ntextlines;i++) {
 		/* printf("Drawing '%s' color=%d, x=%d, y=%d\n", 
 			textline[i].string, current_color, 
@@ -8462,16 +9134,25 @@ static void draw_strings(GtkWidget *w)
 		livecursorx = textline[i].x;
 		livecursory = textline[i].y;
 		set_font(textline[i].font);
+		#ifndef N64
 		draw_string(w, (unsigned char *) textline[i].string);
+		#else
+		draw_string(w, (unsigned char *) textline[i].string, huex[WHITE]);
+		#endif
 	}
 }
 
 /* Draws a letter in the given font at an absolute x,y coords on the screen. */
+#ifndef N64
 static void abs_xy_draw_letter(GtkWidget *w, struct my_vect_obj **font, 
 		unsigned char letter, int x, int y)
+#else
+static void abs_xy_draw_letter(surface_t *w, struct my_vect_obj **font, 
+		unsigned char letter, int x, int y, uint32_t color)
+#endif
 {
 	int i, x1, y1, x2, y2;
-
+	//assertf(font != NULL && font[letter] != NULL, "letter: %c", letter);
 	if (letter == ' ' || letter == '\n' || letter == '\t' || font[letter] == NULL)
 		return;
 
@@ -8483,26 +9164,42 @@ static void abs_xy_draw_letter(GtkWidget *w, struct my_vect_obj **font,
 		x2 = x + font[letter]->p[i+1].x;
 		y2 = y + font[letter]->p[i+1].y;
 		if (x1 > 0 && x2 > 0)
+			#ifndef N64
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y2, color); 
+			#endif
 	}
 }
 
 /* Used for floating labels in the game. */
 /* Draws a string at an absolute x,y position on the screen. */ 
+#ifndef N64
 static void abs_xy_draw_string(GtkWidget *w, char *s, int font, int x, int y) 
+#else
+static void abs_xy_draw_string(surface_t *w, char *s, int font, int x, int y, uint32_t color) 
+#endif
 {
 
 	int i;	
 	int deltax = font_scale[font]*2 + letter_spacing[font];
 
 	for (i=0;s[i];i++)
+		#ifndef N64
 		abs_xy_draw_letter(w, gamefont[font], s[i], x + deltax*i, y);  
+		#else
+		abs_xy_draw_letter(w, gamefont[font], s[i], x + deltax*i, y, color); 
+		#endif
 }
 
 /* Used for floating labels in the game. */
 /* Draws a string at an absolute x,y position on the screen. */ 
 /* Exactly like abs_xy_draw_string, but uses rainbow colors. */
+#ifndef N64
 static void rainbow_abs_xy_draw_string(GtkWidget *w, char *s, int font, int x, int y) 
+#else
+static void rainbow_abs_xy_draw_string(surface_t *w, char *s, int font, int x, int y)  
+#endif
 {
 
 	int i;	
@@ -8514,17 +9211,28 @@ static void rainbow_abs_xy_draw_string(GtkWidget *w, char *s, int font, int x, i
 	for (i=0;s[i];i++) {
 		color = ((((x + deltax*i) * NRAINBOWCOLORS) / (SCREEN_WIDTH*2) + 
 			((y * NRAINBOWCOLORS)/ (SCREEN_HEIGHT*2)) + timer) % NRAINBOWCOLORS) + NCOLORS + NSPARKCOLORS;
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[color]);
 		abs_xy_draw_letter(w, gamefont[font], s[i], x + deltax*i, y);  
+		#else
+		abs_xy_draw_letter(w, gamefont[font], s[i], x + deltax*i, y, huex[color]);
+		#endif
 	}
 }
 
 
 /* FIXME: what is the difference between thise, and the "abs" versions?  I forget. */
+#ifndef N64
 static void xy_draw_letter(GtkWidget *w, struct my_vect_obj **font, 
 		unsigned char letter, int x, int y)
+#else
+static void xy_draw_letter(surface_t *w, struct my_vect_obj **font, 
+		unsigned char letter, int x, int y, uint32_t color)
+#endif
 {
 	int i, x1, y1, x2, y2;
+	//assertf(font != NULL && font[letter] != NULL, "letter: %c", letter);
+
 
 	if (letter == ' ' || letter == '\n' || letter == '\t' || font[letter] == NULL)
 		return;
@@ -8537,20 +9245,32 @@ static void xy_draw_letter(GtkWidget *w, struct my_vect_obj **font,
 		x2 = x + font[letter]->p[i+1].x - game_state.x;
 		y2 = y + font[letter]->p[i+1].y - game_state.y + (SCREEN_HEIGHT/2);
 		if (x1 > 0 && x2 > 0)
+			#ifndef N64
 			wwvi_draw_line(w->window, gc, x1, y1, x2, y2); 
+			#else
+			wwvi_draw_line(w, x1, y1, x2, y2, color); 
+			#endif
 		/* wwvi_draw_line(w->window, gc, x1-1, y1+1, x2-1, y2+1); */
 	}
 }
 
 /* FIXME, what is the diff between this and the "abs" version? */
+#ifndef N64
 static void xy_draw_string(GtkWidget *w, char *s, int font, int x, int y) 
+#else
+static void xy_draw_string(surface_t *w, char *s, int font, int x, int y, uint32_t color) 
+#endif
 {
 
 	int i;	
 	int deltax = font_scale[font]*2 + letter_spacing[font];
 
 	for (i=0;s[i];i++)
+		#ifndef N64
 		xy_draw_letter(w, gamefont[font], (unsigned char) s[i], x + deltax*i, y);  
+		#else
+		xy_draw_letter(w, gamefont[font], (unsigned char) s[i], x + deltax*i, y, color);
+		#endif
 }
 
 
@@ -9490,8 +10210,13 @@ static void add_building(struct terrain_t *t, int xi)
 
 	building = malloc(sizeof(scratch[0]) * npoints);
 	bvec = malloc(sizeof(*bvec));
-	if (building == NULL || bvec == NULL)
+	if (building == NULL || bvec == NULL) {
+		if (building)
+			free(building);
+		if (bvec)
+			free(bvec);
 		return;
+	}
 
 	memcpy(building, scratch, sizeof(scratch[0]) * npoints);
 	bvec->p = building;
@@ -9820,27 +10545,29 @@ static void add_octopi(struct terrain_t *t, struct level_obj_descriptor_entry *e
 			if (o->tsd.octopus.tentacle[j] == NULL)
 				continue;
 			t = o->tsd.octopus.tentacle[j];
-			t->tsd.tentacle.attached_to = o;
-			t->tsd.tentacle.upper_angle = 359;
-			t->tsd.tentacle.lower_angle = 181;
-			t->tsd.tentacle.nsegs = MAX_TENTACLE_SEGS;
-			t->tsd.tentacle.angle = 0;
-			t->tsd.tentacle.color_scheme = color_scheme;
-			t->tsd.tentacle.other_color = other_color;
+			assert(game_state.allocated_tentacles <= MAX_TENTACLES);
+			t->tsd.tentacle = &game_state.tentacles[game_state.allocated_tentacles++];
+			t->tsd.tentacle->attached_to = o;
+			t->tsd.tentacle->upper_angle = 359;
+			t->tsd.tentacle->lower_angle = 181;
+			t->tsd.tentacle->nsegs = MAX_TENTACLE_SEGS;
+			t->tsd.tentacle->angle = 0;
+			t->tsd.tentacle->color_scheme = color_scheme;
+			t->tsd.tentacle->other_color = other_color;
 			t->color = o->color;
 			for (k=0;k<MAX_TENTACLE_SEGS;k++) {
-				t->tsd.tentacle.seg[k].angle = 
+				t->tsd.tentacle->seg[k].angle = 
 					TENTACLE_RANGE(t->tsd.tentacle);
-				t->tsd.tentacle.seg[k].length = length;
-				t->tsd.tentacle.seg[k].angular_v = 0;
-				t->tsd.tentacle.seg[i].dest_angle = 
+				t->tsd.tentacle->seg[k].length = length;
+				t->tsd.tentacle->seg[k].angular_v = 0;
+				t->tsd.tentacle->seg[i].dest_angle = 
 					TENTACLE_RANGE(t->tsd.tentacle);
 				length = length * length_factor;
 				length_factor += 0.01;
 				if (length_factor > 0.97) 
 					length_factor = 0.97;
 				if (length == 1) {
-					t->tsd.tentacle.nsegs = k;
+					t->tsd.tentacle->nsegs = k;
 					break;
 				}
 			}
@@ -9870,6 +10597,8 @@ static void add_gdbs(struct terrain_t *t, struct level_obj_descriptor_entry *ent
 	}
 }
 
+
+
 /* Adds a bunch of loose tentacles sprinkled around the terrain. */
 static void add_tentacles(struct terrain_t *t, struct level_obj_descriptor_entry *entry)
 {
@@ -9885,22 +10614,22 @@ static void add_tentacles(struct terrain_t *t, struct level_obj_descriptor_entry
 			tentacle_move, tentacle_draw, CYAN, NULL, 1, OBJ_TYPE_TENTACLE, 1);
 		if (o != NULL) {
 			level.ntentacles++;
-			o->tsd.tentacle.color_scheme = randomn(100) % 3;
-			o->tsd.tentacle.upper_angle = 160;
-			o->tsd.tentacle.lower_angle = 20;
-			o->tsd.tentacle.nsegs = MAX_TENTACLE_SEGS;
-			o->tsd.tentacle.angle = 0;
+			o->tsd.tentacle->color_scheme = randomn(100) % 3;
+			o->tsd.tentacle->upper_angle = 160;
+			o->tsd.tentacle->lower_angle = 20;
+			o->tsd.tentacle->nsegs = MAX_TENTACLE_SEGS;
+			o->tsd.tentacle->angle = 0;
 			for (i=0;i<MAX_TENTACLE_SEGS;i++) {
-				o->tsd.tentacle.seg[i].angle = randomn(60)-30;
-				o->tsd.tentacle.seg[i].length = length;
-				o->tsd.tentacle.seg[i].angular_v = 0;
-				o->tsd.tentacle.seg[i].dest_angle = TENTACLE_RANGE(o->tsd.tentacle);
+				o->tsd.tentacle->seg[i].angle = randomn(60)-30;
+				o->tsd.tentacle->seg[i].length = length;
+				o->tsd.tentacle->seg[i].angular_v = 0;
+				o->tsd.tentacle->seg[i].dest_angle = TENTACLE_RANGE(o->tsd.tentacle);
 				length = length * length_factor;
 				length_factor += 0.01;
 				if (length_factor > 0.97) 
 					length_factor = 0.97;
 				if (length == 1) {
-					o->tsd.tentacle.nsegs = i;
+					o->tsd.tentacle->nsegs = i;
 					break;
 				}
 			}
@@ -10157,13 +10886,18 @@ static void add_balloons(struct terrain_t *t, struct level_obj_descriptor_entry 
 		}
 	}
 }
-
+#ifndef N64
 static void draw_strings(GtkWidget *w);
+#else
+static void draw_strings(surface_t *w);
+#endif
 void setup_text(void);
+
 
 int they_used_the_source(void)
 {
 #ifndef __WIN32__
+#ifndef N64
 	/*
 	 * A little joke for the programmers.  If *you* built it
 	 * from source less than 1 hour ago you get....
@@ -10188,7 +10922,10 @@ int they_used_the_source(void)
 	/* FIXME: make this work on windows too. */
 	return 0;
 #endif
+#endif
 }
+
+
 
 void sort_high_scores(void)
 {
@@ -10221,12 +10958,16 @@ int new_high_score(int newscore)
 	return MAXHIGHSCORES;
 }
 
-void write_out_high_score_file(void);
 void cancel_sound(int queue_entry);
+#ifndef N64
+void write_out_high_score_file(void);
 static void draw_quit_screen(GtkWidget *w);
-static void do_newhighscore(GtkWidget *w,
-	__attribute__((unused)) GdkEvent *event,
-	__attribute__((unused)) gpointer p)
+static void do_newhighscore(GtkWidget *w)
+#else
+void write_out_high_score_file(void) {};
+static void draw_quit_screen(surface_t *w);
+static void do_newhighscore(surface_t *w)
+#endif
 {
 	int slot;
 	static int highscore_timer = 0;
@@ -10256,7 +10997,10 @@ static void do_newhighscore(GtkWidget *w,
 	}
 
 	/* Draw the high score message */
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[WHITE]);
+	#endif
+
 	rainbow_abs_xy_draw_string(w, "New High Score!", BIG_FONT, 100, 70);
 #ifndef OPENLASE
 	rainbow_abs_xy_draw_string(w, "New High Score!", BIG_FONT, 101, 71);
@@ -10274,7 +11018,11 @@ static void do_newhighscore(GtkWidget *w,
 #ifndef OPENLASE
 		rainbow_abs_xy_draw_string(w, message, BIG_FONT, x+1, y+1);
 #endif
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, x-25, y+25, x+55, y+25);
+		#else
+		wwvi_draw_line(w, x-25, y+25, x+55, y+25, huex[WHITE]);
+		#endif
 	}
 
 	/* Print the alphabet. */
@@ -10291,10 +11039,17 @@ static void do_newhighscore(GtkWidget *w,
 #endif
 			if (i == highscore_letter) {
 				x = 60 + (i%9)*80;
+				#ifndef N64
 				wwvi_draw_line(w->window, gc, x-25, y-65, x-25, y+25);
 				wwvi_draw_line(w->window, gc, x-25, y-65, x+55, y-65);
 				wwvi_draw_line(w->window, gc, x-25, y+25, x+55, y+25);
 				wwvi_draw_line(w->window, gc, x+55, y-65, x+55, y+25);
+				#else
+				wwvi_draw_line(w, x-25, y-65, x-25, y+25, huex[WHITE]);
+				wwvi_draw_line(w, x-25, y-65, x+55, y-65, huex[WHITE]);
+				wwvi_draw_line(w, x-25, y+25, x+55, y+25, huex[WHITE]);
+				wwvi_draw_line(w, x+55, y-65, x+55, y+25, huex[WHITE]);
+				#endif
 			}
 		}
 		rainbow_abs_xy_draw_string(w, "Done", SMALL_FONT, 60 + 8*80, 80+100*4);
@@ -10313,10 +11068,17 @@ static void do_newhighscore(GtkWidget *w,
 	if (highscore_letter == 26 && !finished) {
 		x = 60 + 8*80;
 		y = 80+100*4;
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, x-25, y-65, x-25, y+25);
 		wwvi_draw_line(w->window, gc, x-25, y-65, x+55, y-65);
 		wwvi_draw_line(w->window, gc, x-25, y+25, x+55, y+25);
 		wwvi_draw_line(w->window, gc, x+55, y-65, x+55, y+25);
+		#else
+		wwvi_draw_line(w, x-25, y-65, x-25, y+25, huex[WHITE]);
+		wwvi_draw_line(w, x-25, y-65, x+55, y-65, huex[WHITE]);
+		wwvi_draw_line(w, x-25, y+25, x+55, y+25, huex[WHITE]);
+		wwvi_draw_line(w, x+55, y-65, x+55, y+25, huex[WHITE]);
+		#endif
 	}
 
 	if (highscore_current_initial == 3 && finish_timer == 0) {
@@ -10380,8 +11142,11 @@ void init_intermission_star(struct intermission_star *star)
 	star->lx = star->x;
 	star->ly = star->y;
 }
-
+#ifndef N64
 void update_intermission_starfield(GtkWidget *w)
+#else 
+void update_intermission_starfield(surface_t *w)
+#endif
 {
 #ifdef OPENLASE
 #define INTERMISSION_STARS 20
@@ -10397,7 +11162,11 @@ void update_intermission_starfield(GtkWidget *w)
 		}		
 		initialized = 1;
 	}
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[NCOLORS + NSPARKCOLORS + (((timer >> 2)) % NRAINBOWCOLORS)]);
+	#else
+	uint32_t color = huex[NCOLORS + NSPARKCOLORS + (((timer >> 2)) % NRAINBOWCOLORS)];
+	#endif
 	for (i = 0; i < INTERMISSION_STARS; i++) {
 		star[i].lx = star[i].x;
 		star[i].x += star[i].vx;
@@ -10412,14 +11181,20 @@ void update_intermission_starfield(GtkWidget *w)
 		y = (int) star[i].y;
 		x2 = (int) star[i].lx;
 		y2 = (int) star[i].ly;
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, x, y, x2, y2);
+		#else
+		wwvi_draw_line(w, x, y, x2, y2, color);
+		#endif
 	}
 }
 
 int bonus_points_this_round;
-static int do_intermission(GtkWidget *w,
-	__attribute__((unused)) GdkEvent *event,
-	__attribute__((unused)) gpointer p)
+#ifndef N64
+static int do_intermission(GtkWidget *w)
+#else
+static int do_intermission(surface_t *w)
+#endif
 {
 #define LAST_INTERMISSION_STAGE 12
 	static int intermission_stage = 0;
@@ -10602,8 +11377,12 @@ static int do_intermission(GtkWidget *w,
 char spinner[] = "||||////----\\\\\\\\";
 char radar_msg1[] = "  Sirius Cybernetics Corp. RADAR -- firmware v. 1.05 (bootleg)";
 char radar_msg2[] = "  Fly Safe!!! Fly Siriusly Safe!!!";
-
+extern int __bootcic;
+#ifndef N64
 static void draw_radar(GtkWidget *w)
+#else
+static void draw_radar(surface_t *w)
+#endif
 {
 #ifndef OPENLASE
 	int xoffset, height, yoffset; 
@@ -10621,23 +11400,44 @@ static void draw_radar(GtkWidget *w)
 	y1 = y2 - height;
 	x1 = xoffset;
 	x2 = SCREEN_WIDTH - RADAR_RIGHT_MARGIN;
-
+	#ifdef N64
+	uint32_t color = huex[RED];
+	#else
 	gdk_gc_set_foreground(gc, &huex[RED]);
+	#endif
 
 	/* draw radar border */
+	#ifndef N64
 	wwvi_draw_line(w->window, gc, x1, y1, x1, y2);
 	wwvi_draw_line(w->window, gc, x1, y2, x2, y2);
 	wwvi_draw_line(w->window, gc, x2, y2, x2, y1);
 	wwvi_draw_line(w->window, gc, x2, y1, x1, y1);
+	#else
+	wwvi_draw_line(w, x1, y1, x1, y2, color);
+	wwvi_draw_line(w, x1, y2, x2, y2, color);
+	wwvi_draw_line(w, x2, y2, x2, y1, color);
+	wwvi_draw_line(w, x2, y1, x1, y1, color);
+	#endif
 
 	/* draw health bar */
+	#ifdef N64
+	color = huex[ORANGE];
+	#else
 	gdk_gc_set_foreground(gc, &huex[ORANGE]);
+	#endif
 	if (game_state.health > 0)
+		#ifndef N64
 		wwvi_draw_rectangle(w->window, gc, TRUE, RADAR_LEFT_MARGIN, 
 			SCREEN_HEIGHT - RADAR_HEIGHT - RADAR_YMARGIN - 10, 
 			((SCREEN_WIDTH - RADAR_LEFT_MARGIN - RADAR_RIGHT_MARGIN) * game_state.health / game_state.max_player_health), 
 			RADAR_YMARGIN - 5);
-#if 1
+		#else
+		wwvi_draw_rectangle(w, TRUE, RADAR_LEFT_MARGIN, 
+			SCREEN_HEIGHT - RADAR_HEIGHT - RADAR_YMARGIN - 10, 
+			((SCREEN_WIDTH - RADAR_LEFT_MARGIN - RADAR_RIGHT_MARGIN) * game_state.health / game_state.max_player_health), 
+			RADAR_YMARGIN - 5, color);
+		#endif
+
 	if (game_state.radar_state == RADAR_RUNNING) {
 		/* calculate viewport edges projected onto radar screen. */
 
@@ -10673,7 +11473,7 @@ static void draw_radar(GtkWidget *w)
 			viewport_right = x1;
 		if (viewport_right > x2)
 			viewport_right = x2;
-
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[WHITE]);
 
 		/* draw upper left corner */
@@ -10691,22 +11491,40 @@ static void draw_radar(GtkWidget *w)
 		/* draw lower right corner */
 		wwvi_draw_line(w->window, gc, viewport_right, viewport_bottom, viewport_right, viewport_bottom - 5);
 		wwvi_draw_line(w->window, gc, viewport_right, viewport_bottom, viewport_right-5, viewport_bottom);
+		#else
+		color = huex[WHITE];
+		/* draw upper left corner */
+		wwvi_draw_line(w, viewport_left, viewport_top, viewport_left, viewport_top + 5, color);
+		wwvi_draw_line(w, viewport_left, viewport_top, viewport_left+5, viewport_top, color);
 
-	#if 0
-		wwvi_draw_line(w->window, gc, viewport_left, viewport_top, viewport_left, viewport_bottom);
-		wwvi_draw_line(w->window, gc, viewport_right, viewport_top, viewport_right, viewport_bottom);
-		wwvi_draw_line(w->window, gc, viewport_left, viewport_top, viewport_right, viewport_top);
-		wwvi_draw_line(w->window, gc, viewport_left, viewport_bottom, viewport_right, viewport_bottom);
-	#endif
+		/* draw upper right corner */
+		wwvi_draw_line(w, viewport_right, viewport_top, viewport_right, viewport_top + 5, color);
+		wwvi_draw_line(w, viewport_right, viewport_top, viewport_right-5, viewport_top, color);
+
+		/* draw lower left corner */
+		wwvi_draw_line(w, viewport_left, viewport_bottom, viewport_left, viewport_bottom - 5, color);
+		wwvi_draw_line(w, viewport_left, viewport_bottom, viewport_left+5, viewport_bottom, color);
+
+		/* draw lower right corner */
+		wwvi_draw_line(w, viewport_right, viewport_bottom, viewport_right, viewport_bottom - 5, color);
+		wwvi_draw_line(w, viewport_right, viewport_bottom, viewport_right-5, viewport_bottom, color);
+
+		#endif
+
+
 	}
-#endif
 
 	if (game_state.corrosive_atmosphere && game_state.radar_state == RADAR_RUNNING && credits > 0) {
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[GREEN]);
 		abs_xy_draw_string(w, "Corrosive atmosphere detected!  Vacate the area immediately!", 
 			TINY_FONT, x1 + 50, y1 + RADAR_HEIGHT/2);
+		#else
+		abs_xy_draw_string(w, "Corrosive atmosphere detected!  Vacate the area immediately!", 
+			TINY_FONT, x1 + 50, y1 + RADAR_HEIGHT/2, huex[GREEN]);
+		#endif
 	}
-
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[RED]);
 	sprintf(statusstr, "Score:   %7d", game_state.score);
 	abs_xy_draw_string(w, statusstr, TINY_FONT, x2 + 5, y1 + 7);
@@ -10718,42 +11536,81 @@ static void draw_radar(GtkWidget *w)
 	abs_xy_draw_string(w, statusstr, TINY_FONT, x2 + 5, y1 + 49);
 	sprintf(statusstr, "Humans:      %d/%d", game_state.humanoids, level.nhumanoids);
 	abs_xy_draw_string(w, statusstr, TINY_FONT, x2 + 5, y1 + 63);
+    #else
+	sprintf(statusstr, "Score:   %7d", game_state.score);
+	abs_xy_draw_string(w, statusstr, TINY_FONT, x2 + 5, y1 + 7, huex[RED]);
+	sprintf(statusstr, "Bombs:   %7d", game_state.nbombs);
+	abs_xy_draw_string(w, statusstr, TINY_FONT, x2 + 5, y1 + 21, huex[RED]);
+	sprintf(statusstr, "Lives:   %7d", game_state.lives);
+	abs_xy_draw_string(w, statusstr, TINY_FONT, x2 + 5, y1 + 35, huex[RED]);
+	sprintf(statusstr, "Credits: %7d", credits);
+	abs_xy_draw_string(w, statusstr, TINY_FONT, x2 + 5, y1 + 49, huex[RED]);
+	sprintf(statusstr, "Humans:      %d/%d", game_state.humanoids, level.nhumanoids);
+	abs_xy_draw_string(w, statusstr, TINY_FONT, x2 + 5, y1 + 63, huex[RED]);
+	#endif
 
 	if (game_pause) {
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[GREEN]);
 
 		/* Remember Parsec on the ti99/4a? */
 		abs_xy_draw_string(w, "Time warp activated.", 
 			TINY_FONT, x1 + 50, y1 + RADAR_HEIGHT/2-10);
+		#else
+		abs_xy_draw_string(w, "Time warp activated.", 
+			TINY_FONT, x1 + 50, y1 + RADAR_HEIGHT/2-10, huex[GREEN]);
+		#endif
 		return;
 	}
 
 	if (game_state.radar_state == RADAR_RUNNING) {
 		if ((timer & 0x04) == 0) {
 			if (game_state.missile_locked) {
+				#ifndef N64
 				gdk_gc_set_foreground(gc, &huex[RED]);
 				abs_xy_draw_string(w, "***MISSILE LOCK ON DETECTED***", 
 					TINY_FONT, x1 + 210-18, y1 + RADAR_HEIGHT-3);
+				#else
+				abs_xy_draw_string(w, "***MISSILE LOCK ON DETECTED***", 
+					TINY_FONT, x1 + 210-18, y1 + RADAR_HEIGHT-3, huex[RED]);
+				#endif
 			}	
 			if (credits <= 0) {
+				#ifndef N64
 				gdk_gc_set_foreground(gc, &huex[GREEN]);
 				abs_xy_draw_string(w, "Press 'q' to Insert Quarter and Start Game -- F1 for Help", 
 					TINY_FONT, x1 + 60, y1 + RADAR_HEIGHT-30);
+				#else
+				abs_xy_draw_string(w, "Press the start button to insert a quarter and begin.", 
+					TINY_FONT, x1 + 60, y1 + RADAR_HEIGHT-30, huex[GREEN]);
+				#endif
 			}
 		}
 		return;
 	}
 
 	if (game_state.radar_state == RADAR_FRITZED) {
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[randomn(NCOLORS+NSPARKCOLORS+NRAINBOWCOLORS)]);
 		wwvi_draw_line(w->window, gc, x1, y1 + timer % RADAR_HEIGHT, 
 			x2,  y1 + timer % RADAR_HEIGHT);
+		#else
+		wwvi_draw_line(w, x1, y1 + timer % RADAR_HEIGHT, 
+			x2,  y1 + timer % RADAR_HEIGHT, huex[randomn(NCOLORS+NSPARKCOLORS+NRAINBOWCOLORS)]);
+		#endif
 	} else if (game_state.radar_state <= RADAR_BOOTUP) { 
 		/* radar is booting up, display bootup message. */
+		#ifndef N64
 		gdk_gc_set_foreground(gc, &huex[GREEN]);
+		#endif
 		radar_msg1[0] = spinner[timer % 16];
+		#ifndef N64
 		abs_xy_draw_string(w, radar_msg1, TINY_FONT, x1 + 50, y1 + RADAR_HEIGHT/2-10);
 		abs_xy_draw_string(w, radar_msg2, TINY_FONT, x1 + 80, y1 + RADAR_HEIGHT/2+10);
+		#else
+		abs_xy_draw_string(w, radar_msg1, TINY_FONT, x1 + 20, y1 + RADAR_HEIGHT/2-10, huex[GREEN]);
+		abs_xy_draw_string(w, radar_msg2, TINY_FONT, x1 + 40, y1 + RADAR_HEIGHT/2+10, huex[GREEN]);
+		#endif
 		game_state.radar_state --;
 		if (game_state.radar_state == RADAR_RUNNING)
 			wwviaudio_add_sound(RADAR_READY);
@@ -10762,6 +11619,7 @@ static void draw_radar(GtkWidget *w)
 }
 
 /* call back for configure_event (for window resize) */
+#ifndef N64
 static gint main_da_configure(GtkWidget *w,
 	__attribute__((unused)) GdkEventConfigure *event)
 {
@@ -10801,7 +11659,9 @@ static gint main_da_configure(GtkWidget *w,
 	gdk_gc_set_clip_rectangle(gc, &cliprect);
 	return TRUE;
 }
+#endif
 
+#ifndef N64
 static void draw_quit_screen(GtkWidget *w)
 {
 	int x;
@@ -10836,13 +11696,44 @@ static void draw_quit_screen(GtkWidget *w)
 		wwvi_draw_rectangle(w->window, gc, FALSE, x, 420, 200, 50);
 	}
 }
+#else
+static void draw_quit_screen(surface_t *w)
+{
+	int x;
+	static int quittimer = 0;
+
+	quittimer++;
+
+	wwvi_draw_rectangle(w, TRUE, 10, 10, SCREEN_WIDTH-20, SCREEN_HEIGHT-20, huex[BLACK]);
+	wwvi_draw_rectangle(w, FALSE, 10, 10, SCREEN_WIDTH-20, SCREEN_HEIGHT-20, huex[RED]);
+
+	abs_xy_draw_string(w, "Quit?", SMALL_FONT, 30, 28, huex[WHITE]);
+
+	x = current_quit_selection ? 13 : 48;
+	abs_xy_draw_string(w, "Quit Now", TINY_FONT, 15, 45, current_quit_selection ? huex[WHITE] : huex[RED]);
+	abs_xy_draw_string(w, "Don't Quit", TINY_FONT, 50, 45, current_quit_selection ? huex[RED] : huex[WHITE]);
+
+	if ((quittimer & 0x04)) {
+		wwvi_draw_rectangle(w, FALSE, x, 42, 20, 5, huex[WHITE]);
+	}
+}
+#endif
 
 
-
+#ifndef N64
 static void draw_help_screen(GtkWidget *w);
+#else
+static inline void draw_help_screen(surface_t *w) {}
+#endif
 /* This is the expose function of the main drawing area.  This is */
 /* where everything gets drawn. */
-static int main_da_expose(GtkWidget *w, GdkEvent *event, gpointer p)
+#ifndef N64
+static int main_da_expose(GtkWidget *w,
+	__attribute__((unused)) GdkEvent *event,
+	__attribute__((unused)) gpointer p)
+#else
+static int main_da_expose(surface_t *w)
+#endif
 {
 	int i;
 	int sx1, sx2;
@@ -10851,14 +11742,14 @@ static int main_da_expose(GtkWidget *w, GdkEvent *event, gpointer p)
 
 	if (timer_event == START_INTERMISSION_EVENT) {
 		openlase_startframe();
-		do_intermission(w, event, p);
+		do_intermission(w);
 		openlase_renderframe();
 		return 0;
 	}
 
 	if (timer_event == NEW_HIGH_SCORE_EVENT) {
 		openlase_startframe();
-		do_newhighscore(w, event, p);
+		do_newhighscore(w);
 		openlase_renderframe();
 		return 0;
 		return 0;
@@ -10867,7 +11758,7 @@ static int main_da_expose(GtkWidget *w, GdkEvent *event, gpointer p)
 	openlase_startframe();
 
 	sx1 = game_state.x - 20;
-	sx2 = game_state.x + SCREEN_WIDTH + 20;
+	sx2 = game_state.x + SCREEN_WIDTH - 20;
 
 
 	while (terrain.x[last_lowx] < sx1 && last_lowx+1 < TERRAIN_LENGTH)
@@ -10879,8 +11770,11 @@ static int main_da_expose(GtkWidget *w, GdkEvent *event, gpointer p)
 	while (terrain.x[last_highx] < sx2 && last_highx+1 < TERRAIN_LENGTH) {
 		last_highx++;
 	}
-
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[planet_color[level.ground_color]]);
+	#else
+	COLOR_TYPE color = huex[planet_color[level.ground_color]];
+	#endif
 	for (i=last_lowx;i<last_highx;i++) {
 #if 0
 		if (terrain.x[i] < sx1 && terrain.x[i+1] < sx1) /* offscreen to the left */
@@ -10904,33 +11798,64 @@ static int main_da_expose(GtkWidget *w, GdkEvent *event, gpointer p)
 			printf(".\n");
 		}
 #endif
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, terrain.x[i] - game_state.x, terrain.y[i]+(SCREEN_HEIGHT/2) - game_state.y,  
 					 terrain.x[i+1] - game_state.x, terrain.y[i+1]+(SCREEN_HEIGHT/2) - game_state.y);
+		#else
+		wwvi_draw_line(w, terrain.x[i] - game_state.x, terrain.y[i]+(SCREEN_HEIGHT/2) - game_state.y,  
+					 terrain.x[i+1] - game_state.x, terrain.y[i+1]+(SCREEN_HEIGHT/2) - game_state.y, color);
+		#endif
 	}
+	#ifndef N64
 	gdk_gc_set_foreground(gc, &huex[RED]);
+	#else
+	color = huex[RED];
+	#endif
 
 	/* draw "system memory boundaries" (ha!) */
 	if (game_state.x > terrain.x[0] - SCREEN_WIDTH && game_state.x < terrain.x[0] + SCREEN_WIDTH)
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, terrain.x[0] - game_state.x, 0, 
 			terrain.x[0] - game_state.x, SCREEN_HEIGHT);
+		#else
+		graphics_bounded_draw_line(w, terrain.x[0] - game_state.x, 0, 
+			terrain.x[0] - game_state.x, SCREEN_HEIGHT, color, TRUE);
+		#endif
 	if (game_state.x > terrain.x[TERRAIN_LENGTH - 1] - SCREEN_WIDTH &&
 		game_state.x < terrain.x[TERRAIN_LENGTH - 1] + SCREEN_WIDTH)
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, terrain.x[TERRAIN_LENGTH-1] - game_state.x, 0, 
 			 terrain.x[TERRAIN_LENGTH-1] - game_state.x, SCREEN_HEIGHT); 
+		#else
+		graphics_bounded_draw_line(w, terrain.x[TERRAIN_LENGTH-1] - game_state.x, 0, 
+			 terrain.x[TERRAIN_LENGTH-1] - game_state.x, SCREEN_HEIGHT, color, TRUE); 
+		#endif
+
 	set_font(SMALL_FONT);
 	if (game_state.y < KERNEL_Y_BOUNDARY + SCREEN_HEIGHT) {
+		#ifndef N64
 		wwvi_draw_line(w->window, gc, 0, KERNEL_Y_BOUNDARY  - game_state.y + SCREEN_HEIGHT/2, 
 			SCREEN_WIDTH, KERNEL_Y_BOUNDARY - game_state.y + SCREEN_HEIGHT/2);
+		#else
+		graphics_bounded_draw_line(w, 0, KERNEL_Y_BOUNDARY  - game_state.y + SCREEN_HEIGHT/2, 
+			SCREEN_WIDTH, KERNEL_Y_BOUNDARY - game_state.y + SCREEN_HEIGHT/2, color, TRUE);
+		#endif
 		livecursorx = (SCREEN_WIDTH - abs(game_state.x) % SCREEN_WIDTH);
 		livecursory = KERNEL_Y_BOUNDARY - game_state.y + SCREEN_HEIGHT/2 - 10;
+		#ifndef N64
 		draw_string(w, (unsigned char *) "Kernel Space");
+		#else
+		draw_string(w, (unsigned char *) "Kernel Space", color);
+		#endif
 	}
 
 	if (want_starfield)
 		draw_stars(w);
-	draw_objs(w);
-	draw_strings(w);
-	draw_radar(w);
+
+    draw_objs(w);
+
+    draw_strings(w);
+    draw_radar(w);
 
 	if (in_the_process_of_quitting)
 		draw_quit_screen(w);
@@ -10952,7 +11877,9 @@ static void do_game_pause(void)
 		/* Queue a redraw, otherwise, we won't necessarily get a */
 		/* redraw. Need this for the "Time warp activated."      */
 		/* message to appear in the radar screen. */
+		#ifndef N64
 		gtk_widget_queue_draw(main_da);
+		#endif
 	}
 }
 
@@ -10969,10 +11896,12 @@ static void do_game_pause_help(void)
 		/* Queue a redraw, otherwise, we won't necessarily get a */
 		/* redraw. Need this for the "Time warp activated."      */
 		/* message to appear in the radar screen. */
+		#ifndef N64
 		gtk_widget_queue_draw(main_da);
+		#endif
 	}
 }
-
+#ifndef N64
 void inhibit_screensaver(
 #ifndef DO_INHIBIT_SCREENSAVER
 	__attribute__((unused))
@@ -10996,6 +11925,7 @@ void inhibit_screensaver(
 #endif
 	return;
 }
+
 
 void resume_screensaver(
 #ifndef DO_INHIBIT_SCREENSAVER
@@ -11054,6 +11984,7 @@ static void destroy(__attribute__((unused)) GtkWidget *widget,
 {
     gtk_main_quit ();
 }
+#endif
 
 void game_ended(void);
 void start_level(void);
@@ -11061,7 +11992,7 @@ void timer_expired(void)
 {
 	static int game_over_count = 0;
 
-	/* printf("timer expired, %d\n", timer_event); */
+	/* printf("tim#endifer expired, %d\n", timer_event); */
 	switch (timer_event) {
 	case BLINK_EVENT:
 		setup_text();
@@ -11341,8 +12272,9 @@ void timer_expired(void)
 	}
 }
 
-void really_quit(void)
+static inline void really_quit(void)
 {
+	#ifndef N64
 	gettimeofday(&end_time, NULL);
 	printf("%d frames / %d seconds, %g frames/sec\n", 
 		nframes, (int) (end_time.tv_sec - start_time.tv_sec),
@@ -11351,10 +12283,13 @@ void really_quit(void)
 			 (double) total_line_count /
 			(double) end_time.tv_sec - start_time.tv_sec);
 	destroy_event();
+	#endif
 }
 
 void deal_with_joystick(void);
+#ifndef N64
 void deal_with_keyboard(void);
+
 
 gint advance_game(__attribute__((unused)) gpointer data)
 {
@@ -11428,6 +12363,70 @@ gint advance_game(__attribute__((unused)) gpointer data)
 	return TRUE;
 }
 
+#else
+
+int advance_game()
+{
+	int i;
+
+
+	if (game_pause == 1) {
+		if (game_pause_help) {
+			nframes++;
+		}
+		return TRUE;
+	}
+
+	
+	deal_with_joystick();
+
+	if (in_the_process_of_quitting) {
+		nframes++;
+		if (final_quit_selection)
+			really_quit();
+		return TRUE;
+	}
+
+	game_state.x += game_state.vx;
+	game_state.y += game_state.vy; 
+
+
+	timer++;
+	if (timer == next_timer)
+		timer_expired();
+
+	if (timer_event == END_INTERMISSION_EVENT)
+		return TRUE;
+
+	game_state.missile_locked = 0;
+	if (timer_event != START_INTERMISSION_EVENT && 
+		timer_event != NEW_HIGH_SCORE_EVENT) {
+		int temp_highest_obj = 0;
+		for (i=0;i<=highest_object_number;i++) {
+			if (game_state.go[i].alive) {
+				if (game_state.go[i].move != NULL)
+					game_state.go[i].move(&game_state.go[i]);
+				temp_highest_obj = i;	
+			}
+			/* if (game_state.go[i].alive && game_state.go[i].move == NULL)*/
+				/* printf("NULL MOVE!\n");*/
+		}
+		highest_object_number = temp_highest_obj;
+		if (game_state.missile_locked && timer % 10 == 0 && want_missile_alarm)
+			wwviaudio_add_sound(MISSILE_LOCK_SIREN_SOUND);
+	}
+	nframes++;
+#if 0
+	if (WORLDWIDTH - game_state.x < 100)
+		return FALSE;
+	else
+		return TRUE;
+#endif
+	return TRUE;
+}
+
+#endif
+
 void setup_text(void)
 {
 	cleartext();
@@ -11439,7 +12438,7 @@ void setup_text(void)
 	gotoxy(4,2);
 	gameprint("Word War vi\n");
 	set_font(SMALL_FONT);
-	gotoxy(15,13);
+    gotoxy(4,6); 
 	gameprint("(c) 2007 Stephen Cameron\n");
 	timer_event = BLINK_EVENT;
 	next_timer = timer + 30;
@@ -11462,6 +12461,7 @@ void initialize_game_state_new_level(void)
 	game_state.nbombs = leveld[level.level_number]->nbombs;
 	game_state.ngbombs = leveld[level.level_number]->ngbombs;
 	game_state.prev_bombs = -1;
+	game_state.allocated_tentacles = 0;
 	init_kill_tally();
 	game_state.cmd_multiplier = 1;
 	game_state.radar_state = RADAR_BOOTUP;
@@ -11514,7 +12514,10 @@ void start_level(void)
 	player->vx = PLAYER_SPEED;
 	player->vy = 0;
 	add_target(player);
-	player->alive = 1;
+	player->alive = 1;	
+	#ifndef N64
+	gdk_threads_leave();
+	#endif
 	player->bullseye = NULL;
 	if (xmas_mode)
 		player->color = ORANGE;
@@ -11523,7 +12526,7 @@ void start_level(void)
 	
 	player->destroy = generic_destroy_func;
 	player->tsd.epd.count = -1;
-	player->tsd.epd.count2 = 50;
+	player->tsd.epd.count2 = 10;
 	player->radar_image = 2;
 	player->otype = OBJ_TYPE_PLAYER;
 	game_state.health = game_state.max_player_health;
@@ -11535,20 +12538,21 @@ void start_level(void)
 	game_state.y = 0;
 	game_state.radar_state = RADAR_BOOTUP;
 	game_state.houses_gifted = 0;
+	game_state.allocated_tentacles = 0;
 
 	add_reindeer();
 
-	srandom(level.random_seed);
+	SRAND(level.random_seed);
 	generate_terrain(&terrain);
 
-	add_buildings(&terrain);/* Some FreeBSD users report that */
+	if (0) add_buildings(&terrain);/* Some FreeBSD users report that */
 				/*add_buildings() causes crashes. */
 				/* Commenting this out on FreeBSD */
 				/* may help, but, no buildings. */
 				/* I've looked at the code, but */
 				/* don't see anything wrong with it. */
 	add_humanoids(&terrain);
-	add_bridges(&terrain);
+	if (0) add_bridges(&terrain);
 	add_socket(&terrain);
 
 	level.nrockets = 0;
@@ -11676,7 +12680,7 @@ void game_ended(void)
 
 void advance_level(void)
 {
-	srandom(level.random_seed);
+	SRAND(level.random_seed);
 	level.random_seed = random(); /* deterministic */
 
 	level.level_number++;
@@ -11706,7 +12710,6 @@ void insert_quarter(void)
 		wwviaudio_resume_sound_effects();
 		wwviaudio_resume_music();
 		wwviaudio_add_sound(INSERT_COIN_SOUND);
-		sleep(2);
 		ntextlines = 1;
 		game_ended();
 		/* initialize_game_state_new_level();
@@ -11759,10 +12762,10 @@ char *keyactionstring[] = {
 enum keyaction jsbuttonaction[11] = {
 		/* default joystick button assignments. */
 		key_droppresent, /* button 0 */
-		keybomb,	 /* button 1 */
-		keybomb,	 /* button 2 */
-		keylaser,	 /* button 3 */
-		keylaser,	 /* button 4 */
+		keyquarter,	 /* button 1 */
+		keylaser,	 /* button 2 */
+		keybomb,	 /* button 3 */
+		keychaff,	 /* button 4 */
 		keybomb,	 /* button 5 */
 		keylaser,	 /* button 6 */
 		keylaser,	 /* button 7 */
@@ -12145,6 +13148,8 @@ no_credits:
 	}
 }
 
+#ifndef N64
+
 void deal_with_keyboard(void)
 {
 	static int lastvy_inc = 0;
@@ -12434,6 +13439,10 @@ struct keyname_value_entry {
 enum keyaction keymap[256];
 enum keyaction ffkeymap[256];
 unsigned char *keycharmap[256];
+
+#endif
+
+#ifndef N64
 
 static int helpscreen_pixel_row = -40;
 line_drawing_function *old_line_draw;
@@ -12735,6 +13744,8 @@ void init_keymap(void)
 	ffkeymap[GDK_F11 & 0x00ff] = keyfullscreen;
 }
 
+#endif // not N64
+
 int remap_joystick_button(int button, char *actionname)
 {
 	enum keyaction i;
@@ -12752,6 +13763,8 @@ int remap_joystick_button(int button, char *actionname)
 	}
 	return -1;
 }
+
+#ifndef N64
 
 int remapkey(char *keyname, char *actionname)
 {
@@ -13034,136 +14047,87 @@ static gint key_press_cb(__attribute__((unused)) GtkWidget* widget,
 	return FALSE;
 }
 
+#endif
+
 /***********************************************************************/
 /* Beginning of AUDIO related code                                     */
 /***********************************************************************/
 
 #ifdef WITHAUDIOSUPPORT
+//#define N64
+#ifdef N64
+#define OPEN_SOUND_CLIP(idx, filename) (wwviaudio_read_ogg_clip(idx,"rom:/" #filename ".wav64"))
+#else
+#define OPEN_SOUND_CLIP(idx, filename) (wwviaudio_read_ogg_clip(idx,"sounds/" #filename ".ogg"))
+#endif
+
 int init_clips(void)
 {
 	printf("Decoding audio data..."); fflush(stdout);
 
-	wwviaudio_read_ogg_clip(PLAYER_LASER_SOUND,
-		"sounds/synthetic_laser.ogg");
-	wwviaudio_read_ogg_clip(BOMB_IMPACT_SOUND,
-		"sounds/bombexplosion.ogg");
-	wwviaudio_read_ogg_clip(ROCKET_LAUNCH_SOUND,
-		"sounds/rocket_exhaust_1.ogg");
-	wwviaudio_read_ogg_clip(FLAK_FIRE_SOUND,
-			"sounds/flak_gun_sound.ogg");
-	wwviaudio_read_ogg_clip(LARGE_EXPLOSION_SOUND,
-			"sounds/big_explosion.ogg");
-	wwviaudio_read_ogg_clip(ROCKET_EXPLOSION_SOUND,
-			"sounds/missile_explosion.ogg");
-	wwviaudio_read_ogg_clip(LASER_EXPLOSION_SOUND,
-			"sounds/flak_hit.ogg");
-	wwviaudio_read_ogg_clip(GROUND_SMACK_SOUND,
-			"sounds/new_ground_smack.ogg");
-	wwviaudio_read_ogg_clip(INSERT_COIN_SOUND,
-			"sounds/us_quarter.ogg");
-	wwviaudio_read_ogg_clip(SAM_LAUNCH_SOUND,
-			"sounds/missile_launch_2.ogg");
-	wwviaudio_read_ogg_clip(THUNDER_SOUND,
-			"sounds/synthetic_thunder_short.ogg");
-	wwviaudio_read_ogg_clip(INTERMISSION_MUSIC_SOUND,
-			"sounds/dtox3monomix.ogg");
-	wwviaudio_read_ogg_clip(MISSILE_LOCK_SIREN_SOUND,
-			"sounds/missile_alarm_2.ogg");
-	wwviaudio_read_ogg_clip(CARDOOR_SOUND,
-			"sounds/toyota_celica_cardoor_sample.ogg");
-	wwviaudio_read_ogg_clip(WOOHOO_SOUND,
-			"sounds/woohoo.ogg");
-	wwviaudio_read_ogg_clip(OWMYSPINE_SOUND,
-			"sounds/ow_my_spine.ogg");
-	wwviaudio_read_ogg_clip(HELPDOWNHERE_SOUND,
-			"sounds/help_down_here.ogg");
-	wwviaudio_read_ogg_clip(CRONSHOT,
-			"sounds/synthetic_gunshot_2.ogg");
-	wwviaudio_read_ogg_clip(HELPUPHERE_SOUND,
-			"sounds/help_up_here.ogg");
-	wwviaudio_read_ogg_clip(ABDUCTED_SOUND,
-			"sounds/abducted.ogg");
-	wwviaudio_read_ogg_clip(CLANG_SOUND,
-			"sounds/clang.ogg");
-	wwviaudio_read_ogg_clip(SCREAM_SOUND,
-			"sounds/fallingscreamhi.ogg");
-	wwviaudio_read_ogg_clip(BODYSLAM_SOUND,
-			"sounds/bodyslam.ogg");
-	wwviaudio_read_ogg_clip(USETHESOURCE_SOUND,
-			"sounds/UseTheSource.ogg");
-	wwviaudio_read_ogg_clip(OOF_SOUND,
-			"sounds/ooooof.ogg");
-	wwviaudio_read_ogg_clip(METALBANG1,
-			"sounds/metalbang1.ogg");
-	wwviaudio_read_ogg_clip(METALBANG2,
-			"sounds/metalbang2.ogg");
-	wwviaudio_read_ogg_clip(METALBANG3,
-			"sounds/metalbang3.ogg");
-	wwviaudio_read_ogg_clip(METALBANG4,
-			"sounds/metalbang4.ogg");
-	wwviaudio_read_ogg_clip(METALBANG5,
-			"sounds/metalbang5.ogg");
-	wwviaudio_read_ogg_clip(METALBANG6,
-			"sounds/metalbang6.ogg");
-	wwviaudio_read_ogg_clip(METALBANG7,
-			"sounds/metalbang7.ogg");
-	wwviaudio_read_ogg_clip(METALBANG1,
-			"sounds/metalbang1.ogg");
-	wwviaudio_read_ogg_clip(STONEBANG2,
-			"sounds/stonebang2.ogg");
-	wwviaudio_read_ogg_clip(STONEBANG3,
-			"sounds/stonebang3.ogg");
-	wwviaudio_read_ogg_clip(STONEBANG4,
-			"sounds/stonebang4.ogg");
-	wwviaudio_read_ogg_clip(STONEBANG5,
-			"sounds/stonebang5.ogg");
-	wwviaudio_read_ogg_clip(STONEBANG6,
-			"sounds/stonebang6.ogg");
-	wwviaudio_read_ogg_clip(STONEBANG7,
-			"sounds/stonebang7.ogg");
-	wwviaudio_read_ogg_clip(STONEBANG8,
-			"sounds/stonebang8.ogg");
-	wwviaudio_read_ogg_clip(VOLCANO_ERUPTION,
-			"sounds/volcano_eruption.ogg");
-	wwviaudio_read_ogg_clip(IT_BURNS,
-			"sounds/aaaah_it_burns.ogg");
-	wwviaudio_read_ogg_clip(ZZZT_SOUND,
-			"sounds/zzzt.ogg");
-	wwviaudio_read_ogg_clip(GRAVITYBOMB_SOUND,
-			"sounds/gravity_bomb.ogg");
-	wwviaudio_read_ogg_clip(JETWASH_SOUND,
-			"sounds/jetwash.ogg");
-	wwviaudio_read_ogg_clip(TIMPANI_BOING,
-			"sounds/timpani_boing.ogg");
-	wwviaudio_read_ogg_clip(NICE_BANK_SHOT,
-			"sounds/nice_bank_shot.ogg");
-	wwviaudio_read_ogg_clip(RADAR_READY,
-			"sounds/radar_ready.ogg");
-	wwviaudio_read_ogg_clip(RADAR_FAIL,
-			"sounds/radar_fail.ogg");
-	wwviaudio_read_ogg_clip(GUNWHEEL,
-			"sounds/gunwheel_sound.ogg");
-	wwviaudio_read_ogg_clip(TESLA_FIRE,
-			"sounds/tesla_tower.ogg");
+	OPEN_SOUND_CLIP(PLAYER_LASER_SOUND, synthetic_laser);
+	OPEN_SOUND_CLIP(BOMB_IMPACT_SOUND, bombexplosion);
+	OPEN_SOUND_CLIP(ROCKET_LAUNCH_SOUND, rocket_exhaust_1);
+	OPEN_SOUND_CLIP(FLAK_FIRE_SOUND, flak_gun_sound);
+	OPEN_SOUND_CLIP(LARGE_EXPLOSION_SOUND, big_explosion);
+	OPEN_SOUND_CLIP(ROCKET_EXPLOSION_SOUND, missile_explosion);
+	OPEN_SOUND_CLIP(LASER_EXPLOSION_SOUND, flak_hit);
+	OPEN_SOUND_CLIP(GROUND_SMACK_SOUND, new_ground_smack);
+	OPEN_SOUND_CLIP(INSERT_COIN_SOUND, us_quarter);
+	OPEN_SOUND_CLIP(SAM_LAUNCH_SOUND, missile_launch_2);
+	OPEN_SOUND_CLIP(THUNDER_SOUND, synthetic_thunder_short);
+	OPEN_SOUND_CLIP(INTERMISSION_MUSIC_SOUND, dtox3monomix);
+	OPEN_SOUND_CLIP(MISSILE_LOCK_SIREN_SOUND, missile_alarm_2);
+	OPEN_SOUND_CLIP(CARDOOR_SOUND, toyota_celica_cardoor_sample);
+	OPEN_SOUND_CLIP(WOOHOO_SOUND, woohoo);
+	OPEN_SOUND_CLIP(OWMYSPINE_SOUND, ow_my_spine);
+	OPEN_SOUND_CLIP(HELPDOWNHERE_SOUND, help_down_here);
+	OPEN_SOUND_CLIP(CRONSHOT, synthetic_gunshot_2);
+	OPEN_SOUND_CLIP(HELPUPHERE_SOUND, help_up_here);
+	OPEN_SOUND_CLIP(ABDUCTED_SOUND, abducted);
+	OPEN_SOUND_CLIP(CLANG_SOUND, clang);
+	OPEN_SOUND_CLIP(SCREAM_SOUND, fallingscreamhi);
+	OPEN_SOUND_CLIP(BODYSLAM_SOUND, bodyslam);
+	OPEN_SOUND_CLIP(USETHESOURCE_SOUND, UseTheSource);
+	OPEN_SOUND_CLIP(OOF_SOUND, ooooof);
+	OPEN_SOUND_CLIP(METALBANG1, metalbang1);
+	OPEN_SOUND_CLIP(METALBANG2, metalbang2);
+	OPEN_SOUND_CLIP(METALBANG3, metalbang3);
+	OPEN_SOUND_CLIP(METALBANG4, metalbang4);
+	OPEN_SOUND_CLIP(METALBANG5, metalbang5);
+	OPEN_SOUND_CLIP(METALBANG6, metalbang6);
+	OPEN_SOUND_CLIP(METALBANG7, metalbang7);
+	OPEN_SOUND_CLIP(METALBANG1, metalbang1);
+	OPEN_SOUND_CLIP(STONEBANG2, stonebang2);
+	OPEN_SOUND_CLIP(STONEBANG3, stonebang3);
+	OPEN_SOUND_CLIP(STONEBANG4, stonebang4);
+	OPEN_SOUND_CLIP(STONEBANG5, stonebang5);
+	OPEN_SOUND_CLIP(STONEBANG6, stonebang6);
+	OPEN_SOUND_CLIP(STONEBANG7, stonebang7);
+	OPEN_SOUND_CLIP(STONEBANG8, stonebang8);
+	OPEN_SOUND_CLIP(VOLCANO_ERUPTION, volcano_eruption);
+	OPEN_SOUND_CLIP(IT_BURNS, aaaah_it_burns);
+	OPEN_SOUND_CLIP(ZZZT_SOUND, zzzt);
+	OPEN_SOUND_CLIP(GRAVITYBOMB_SOUND, gravity_bomb);
+	OPEN_SOUND_CLIP(JETWASH_SOUND, jetwash);
+	OPEN_SOUND_CLIP(TIMPANI_BOING, timpani_boing);
+	OPEN_SOUND_CLIP(NICE_BANK_SHOT, nice_bank_shot);
+	OPEN_SOUND_CLIP(RADAR_READY, radar_ready);
+	OPEN_SOUND_CLIP(RADAR_FAIL, radar_fail);
+	OPEN_SOUND_CLIP(GUNWHEEL, gunwheel_sound);
+	OPEN_SOUND_CLIP(TESLA_FIRE, tesla_tower);
 	if (xmas_mode) {
-		wwviaudio_read_ogg_clip(HOHOHO,
-			"sounds/hohoho.ogg");
-		wwviaudio_read_ogg_clip(HOHOHO_MERRY_XMAS,
-			"sounds/hohoho_merry_xmas.ogg");
-		wwviaudio_read_ogg_clip(YAY_SANTA,
-			"sounds/yay_santa.ogg");
+		OPEN_SOUND_CLIP(HOHOHO, hohoho);
+		OPEN_SOUND_CLIP(HOHOHO_MERRY_XMAS, hohoho_merry_xmas);
+		OPEN_SOUND_CLIP(YAY_SANTA, yay_santa);
 	}
 	if (!nomusic) {
-		wwviaudio_read_ogg_clip(DESTINY_FACEDOWN,
-			"sounds/destiny_facedown.ogg");
-		wwviaudio_read_ogg_clip(HIGH_SCORE_MUSIC,
-			"sounds/highscoremusic.ogg");
+		OPEN_SOUND_CLIP(DESTINY_FACEDOWN, destiny_facedown);
+		OPEN_SOUND_CLIP(HIGH_SCORE_MUSIC, highscoremusic);	
 		if (!xmas_mode)
-			wwviaudio_read_ogg_clip(MUSIC_SOUND,
-				"sounds/lucky13-steve-mono-mix.ogg");
+			OPEN_SOUND_CLIP(MUSIC_SOUND, lucky13-steve-mono-mix);
 		else
-			wwviaudio_read_ogg_clip(MUSIC_SOUND,
-				"sounds/lucky-holiday-cornbread-stuffing-mono.ogg");
+			OPEN_SOUND_CLIP(MUSIC_SOUND, lucky-holiday-cornbread-stuffing-mono);
 	}
 	printf("done.\n");
 	return 0;
@@ -13173,6 +14137,8 @@ int init_clips(void)
 /***********************************************************************/
 /* End of AUDIO related code                                     */
 /***********************************************************************/
+
+#ifndef N64
 
 void setup_rainbow_colors(void)
 {
@@ -13339,6 +14305,119 @@ void paint_it_green(void)
 	}
 }
 
+#else
+
+void setup_colors(void) 
+{
+	huex[WHITE] = graphics_make_color(0xFF, 0xFF, 0xFF, 0);
+	huex[BLUE] = graphics_make_color(0, 0, 0xFF, 0);
+	huex[BLACK] = graphics_make_color(0, 0, 0, 0);
+	huex[GREEN] = graphics_make_color(0, 0xFF, 0, 0);
+	huex[DARKGREEN] = graphics_make_color(0, 0x64, 0, 0);	
+	huex[YELLOW] = graphics_make_color(0xFF, 0xFF, 0, 0);
+	huex[RED] = graphics_make_color(0xFF, 0, 0, 0);
+	huex[ORANGE] = graphics_make_color(0xFF, 0xA5, 0, 0);
+	huex[CYAN] = graphics_make_color(0, 0xFF, 0xFF, 0);
+	huex[MAGENTA] = graphics_make_color(0xFF, 0, 0xFF, 0);
+}
+
+void setup_rainbow_colors(void)
+{
+
+	int i, r, g, b, dr, dg, db, c;
+
+	rainbow_color = &huex[NCOLORS + NSPARKCOLORS];
+
+	
+	r = 32766*2;
+	g = 0;
+	b = 0;
+
+	dr = -r / NRAINBOWSTEPS;
+	dg = r / NRAINBOWSTEPS;
+	db = 0;
+
+	c = 0;
+
+	for (i=0;i<NRAINBOWSTEPS;i++) {
+		rainbow_color[c] = graphics_make_color(r, g, b, 0);
+
+		r += dr;
+		g += dg;
+		b += db;
+
+		c++;
+	}
+
+	dg = (-32766*2) / NRAINBOWSTEPS;
+	db = -dg;
+	dr = 0;
+
+	for (i=0;i<NRAINBOWSTEPS;i++) {
+		rainbow_color[c] = graphics_make_color(r, g, b, 0);
+
+
+		r += dr;
+		g += dg;
+		b += db;
+
+		c++;
+	}
+
+	db = (-32766*2) / NRAINBOWSTEPS;
+	dr = -db;
+	dg = 0;
+
+	for (i=0;i<NRAINBOWSTEPS;i++) {
+		rainbow_color[c] = graphics_make_color(r, g, b, 0);
+
+
+		r += dr;
+		g += dg;
+		b += db;
+
+		c++;
+	}
+}
+
+void setup_spark_colors(void)
+{
+
+/* Set up an array of colors that fade nicely from bright
+   yellow to orange to red.  */
+
+	int i, r,g,b, dr, dg, db;
+
+	sparkcolor = &huex[NCOLORS];
+
+	r = 32766*2;
+	g = 32766*2;
+	b = 32766 * 1.5;
+
+	dr = 0;
+	dg = (-(2500) / NSPARKCOLORS);
+	db = 3 * dg;
+	
+	for (i=NSPARKCOLORS-1; i>=0; i--) {
+		sparkcolor[i] = graphics_make_color(r, g, b, 0);
+
+		r += dr;
+		g += dg;
+		b += db;
+
+		if (r < 0) r = 0;
+		if (g < 0) g = 0;
+		if (b < 0) b = 0;
+
+		dg *= 1.27;
+		db *= 1.27;
+	}
+}
+
+#endif
+
+#ifndef N64
+
 static struct option wordwarvi_options[] = {
 	{ "bw", 0, NULL, 0 },
 	{ "sounddevice", 1, NULL, 1 },
@@ -13412,6 +14491,8 @@ void usage(void)
 	exit(1);
 }
 
+
+
 void write_out_high_score_file(void)
 {
 	/* Here's where you'd write out the high_score[] array */
@@ -13438,7 +14519,11 @@ void write_out_high_score_file(void)
 		n = write(fd, highscore[i].name, 3);
 		if (n != 3)
 			break;
+		#ifndef N64
 		bigendian_score = htonl(highscore[i].score);
+		#else
+		bigendian_score = highscore[i].score;
+		#endif
 		n = write(fd, &bigendian_score, sizeof(bigendian_score));
 		if (n != sizeof(bigendian_score))
 			break;
@@ -13492,6 +14577,8 @@ int open_high_score_file_and_lose_permissions(void)
 	return fd;
 }
 
+#endif
+
 void init_highscores(void)
 {
 	int i;
@@ -13511,6 +14598,8 @@ void init_highscores(void)
 	highscore[2].score = 2043000;
 }
 
+#ifndef N64
+
 void set_cursor(GtkWidget *window)
 {
 	GdkCursor* cursor;
@@ -13518,6 +14607,8 @@ void set_cursor(GtkWidget *window)
 	gdk_window_set_cursor(window->window, cursor);
 	gdk_cursor_destroy(cursor);
 }
+
+#endif
 
 char *trim_whitespace(char *s)
 {
@@ -13554,6 +14645,8 @@ int set_difficulty(char *difficulty)
 	}
 	return 1;
 }
+
+#ifndef N64
 
 void read_exrc_file(int *bw, int *blueprint, int *retrogreen,
 	int *framerate, int *levelwarp, int *randomseed, 
@@ -14261,12 +15354,7 @@ int main(int argc, char *argv[])
      * titlebar), we ask it to call the delete_event () function
      * as defined above. The data passed to the callback
      * function is NULL and is ignored in the callback function. */
-    g_signal_connect (G_OBJECT (window), "delete_event",
-		      G_CALLBACK (delete_event), NULL);
-    
-    /* Here we connect the "destroy" event to a signal handler.  
-     * This event occurs when we call gtk_widget_destroy() on the window,
-     * or if we return FALSE in the "delete_event" callback. */
+    g_signal_connect (G_OBJECT (window), "delete_event", G_CALLBACK(delete_event), NULL);
     g_signal_connect (G_OBJECT (window), "destroy",
 		      G_CALLBACK (destroy), NULL);
    
@@ -14404,3 +15492,156 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
+#else
+
+display_context_t lockVideo(int wait)
+{
+    display_context_t dc;
+
+    if (wait)
+        while (!(dc = display_get()));
+    else
+        dc = display_get();
+    return dc;
+}
+
+void unlockVideo(display_context_t dc)
+{
+    if (dc)
+        display_show(dc);
+}
+
+/* vblank callback */
+void vblCallback(void)
+{
+    gTicks++;
+}
+
+void delay(int cnt)
+{
+    int then = gTicks + cnt;
+    while (then > gTicks) ;
+}
+
+const resolution_t 	RESOLUTION = {SCREEN_WIDTH, SCREEN_HEIGHT, true};
+
+/* initialize console hardware */
+void init_n64(void)
+{
+    /* Initialize peripherals */
+    display_init( RESOLUTION, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE );
+
+    register_VI_handler(vblCallback);
+
+    joypad_init();
+#ifdef WITHAUDIOSUPPORT
+	int ret = dfs_init(DFS_DEFAULT_LOCATION);
+	assert(ret == DFS_ESUCCESS);
+#endif
+}
+
+int game_setup()
+{
+
+	init_highscores();
+
+	real_screen_width = SCREEN_WIDTH;
+	real_screen_height = SCREEN_HEIGHT;
+	frame_rate_hz = FRAME_RATE_HZ;
+	/* current_draw_line = crazy_line;*/
+	/* current_draw_rectangle = crazy_rectangle;*/
+
+	//init_keymap();
+	game_state.max_player_health = MEDIUM_MAXHEALTH;
+	game_state.rumble_wanted = 1;
+
+	set_joystick_x_axis(game_state.x_joystick_axis);
+	set_joystick_y_axis(game_state.y_joystick_axis);
+
+#ifdef WITHAUDIOSUPPORT
+	if (nomusic)
+		wwviaudio_set_nomusic();
+	wwviaudio_set_sound_device(sound_device);
+	if (wwviaudio_initialize_portaudio(MAX_CONCURRENT_SOUNDS, NCLIPS) != 0)
+		printf("Guess sound's not working...\n");
+	else
+		init_clips();
+#endif
+   
+	/* Set up the colors. */
+	setup_colors();
+	setup_spark_colors();
+	setup_rainbow_colors();
+ 
+
+	game_state.rumble_wanted = 0;
+	current_draw_line = scaled_line;
+	current_draw_rectangle = scaled_rectangle;
+	current_bright_line = scaled_bright_line;
+	xscale_screen = (float) real_screen_width / (float) SCREEN_WIDTH;
+	yscale_screen = (float) real_screen_height / (float) SCREEN_HEIGHT;
+   
+	init_score_table(); 
+	init_vects();
+	init_vxy_2_dxy();
+	init_object_numbers();
+
+
+	/* print_target_list();*/
+
+
+	make_debris_forms();
+	init_levels_to_beginning();
+	initialize_game_state_new_level();
+	init_radar_noise();
+	game_state.score = 0;
+	game_state.sound_effects_on = 1;
+	wwviaudio_resume_sound_effects();
+	start_level();
+
+
+	explosion = explode;
+	bright_explosion = bright_explode;
+
+    gettimeofday(&start_time, NULL);
+
+    return 0;
+}
+
+/* main code entry point */
+int main(void)
+{
+    display_context_t _dc;
+
+    init_n64();
+	game_setup();
+
+    while (1)
+    {
+		if(gTicks % 3 == 1) { 
+			advance_game();
+				_dc = lockVideo(1);
+				graphics_fill_screen(_dc, huex[BLACK]);
+        		main_da_expose(_dc);
+        		unlockVideo(_dc);
+		}
+			// Check whether one audio buffer is ready, otherwise wait for next
+			// frame to perform mixing.
+			if (audio_can_write()) {    	
+				short *buf = audio_write_begin();
+				mixer_poll(buf, audio_get_buffer_length());
+				audio_write_end();
+			}
+    }
+
+	do_game_pause();
+	do_game_pause_help();
+
+	free_debris_forms();
+	openlase_shutdown();
+
+    return 0;
+}
+
+#endif

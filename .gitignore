@@ -1,1 +1,11 @@
 *.o
+filesystem/
+sounds/*.wav
+*.z64
+*.gz
+stamp
+stamp.h
+wwviiv.z64
+wordwarvi
+build/
+.idea/

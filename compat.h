@@ -33,5 +33,12 @@
 
 #endif /* __linux__ */
 #endif /* __WIN32__ */
-#endif /* COMPAT_H */
 
+#ifdef N64
+
+#define TRUE 1
+#define FALSE 0
+
+#endif
+
+#endif /* COMPAT_H */

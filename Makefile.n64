@@ -1,0 +1,47 @@
+all: wwviiv.z64
+.PHONY: all
+
+BUILD_DIR = build
+include $(N64_INST)/include/n64.mk
+
+OBJS = $(BUILD_DIR)/joystick.o \
+$(BUILD_DIR)/wwvi_font.o \
+$(BUILD_DIR)/wwviaudio.o \
+$(BUILD_DIR)/wordwarvi.o 
+#$(BUILD_DIR)/rumble.o \
+
+ifeq (1,0)
+sounds_ogg = $(wildcard sounds/*.ogg)
+#sounds_xm = $(wildcard sounds/*.xm)
+
+sounds_wav = $(addprefix filesystem/,$(notdir $(sounds_ogg:%.ogg=%.wav)))
+sounds = $(addprefix filesystem/,$(notdir $(sounds_ogg:%.ogg=%.wav64))) \
+#		 $(addprefix filesystem/,$(notdir $(sounds_xm:%.xm=%.xm64)))
+
+
+sounds/%.wav: sounds/%.ogg
+	@echo "    [AUDIO] $@"
+	ffmpeg -acodec libvorbis -i "$<" -acodec pcm_s16le "$@"
+filesystem/%.wav64: sounds/%.wav
+	@mkdir -p $(dir $@)
+	@echo "    [AUDIO] $@"
+	@$(N64_AUDIOCONV) $(AUDIOCONV_FLAGS) -o filesystem "$<"
+
+filesystem/%.xm64: sounds/%.xm
+	@mkdir -p $(dir $@)
+	@echo "    [AUDIO] $@"
+	@$(N64_AUDIOCONV) $(AUDIOCONV_FLAGS) -o filesystem "$<"
+
+wwviiv.z64: $(BUILD_DIR)/wwviiv.dfs
+$(BUILD_DIR)/wwviiv.dfs: $(sounds)
+endif
+
+wwviiv.z64: N64_ROM_TITLE = "WW VI-IV"
+
+$(BUILD_DIR)/wwviiv.elf: $(OBJS)
+
+clean:
+	rm -rf $(BUILD_DIR) *.z64
+.PHONY: clean
+
+-include $(wildcard $(BUILD_DIR)/*.d)

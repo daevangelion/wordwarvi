@@ -19,6 +19,7 @@
 
  */
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -202,9 +203,11 @@ static struct my_vect_obj *prerender_glyph(stroke_t g[], int xscale, int yscale)
 	}
 
 	v = (struct my_vect_obj *) malloc(sizeof(struct my_vect_obj));
+	assert(v != NULL);
 	v->npoints = npoints;
 	if (npoints != 0) {
 		v->p = (struct my_point_t *) malloc(sizeof(struct my_point_t) * npoints);
+		assert(v->p != NULL);
 		memcpy(v->p, scratch, sizeof(struct my_point_t) * npoints);
 	} else
 		v->p = NULL;

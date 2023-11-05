@@ -203,6 +203,71 @@ int get_joystick_status(struct wwvi_js_event *wjse)
 	return 0;
 }
 
+#elifdef N64
+
+#include <libdragon.h>
+
+static int joystick_fd = -1;
+
+/* These are sensible on Logitech Dual Action Rumble and xbox360 controller. */
+static int joystick_x_axis = 0;
+static int joystick_y_axis = 1;
+
+int open_joystick(char *joystick_device, __attribute__((unused)) void *window)
+{
+	return joystick_fd;
+}
+
+int read_joystick_event(struct js_event *jse)
+{
+	return 0;
+}
+
+void close_joystick()
+{
+	return;
+}
+
+int get_joystick_status(struct wwvi_js_event *wjse)
+{
+	struct controller_data controllers;
+	controller_read(&controllers);
+	// if(controllers.c[0].right) {
+	// 	wjse->stick_x = 21000;
+	// } else if(controllers.c[0].left){
+	// 	wjse->stick_x = -21000;
+	// } else {
+	// 	wjse->stick_x = 0;
+	// }
+	// if(controllers.c[0].down) {
+	// 	wjse->stick_y = 21000;
+	// } else if(controllers.c[0].up){
+	// 	wjse->stick_y = -21000;
+	// } else {
+	// 	wjse->stick_y = 0;
+	// }
+	wjse->stick_x = controllers.c[0].x * 0x1ff; 
+	wjse->stick_y = 0 - (controllers.c[0].y * 0x1ff); 
+	wjse->button[0] = controllers.c[0].L;
+	wjse->button[1] = controllers.c[0].start;
+	wjse->button[2] = controllers.c[0].Z;
+	wjse->button[3] = controllers.c[0].A;
+	wjse->button[4] = controllers.c[0].B;
+	//wjse->button[0] = data;
+	return 0;
+}
+
+void set_joystick_y_axis(int axis)
+{
+	joystick_y_axis = axis;
+}
+
+void set_joystick_x_axis(int axis)
+{
+	joystick_x_axis = axis;
+}
+
+
 #else
 
 #include <stdio.h>

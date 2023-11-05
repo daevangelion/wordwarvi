@@ -18,9 +18,129 @@
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
  */
-
+#define WWVIAUDIO_STUBS_ONLY
 #ifndef WWVIAUDIO_STUBS_ONLY
+#ifdef N64
 
+#include "wwviaudio.h"
+#include "libdragon.h"
+#include "string.h"
+
+static uint8_t allocated_sounds = 0;
+static uint8_t audio_paused = 0;
+static uint8_t music_playing = 0;
+//static uint8_t sound_working = 0;
+static uint8_t nomusic = 0;
+static uint8_t sound_effects_on = 1;
+static uint8_t max_concurrent_sounds = 0;
+static uint8_t max_sound_clips = 0;
+struct sound_queue_entry {
+	uint8_t active;
+	uint8_t sound;	
+};
+
+typedef struct sound_queue_entry sound_queue_entry_t;
+
+static wav64_t* sounds = NULL;
+
+static sound_queue_entry_t* audio_queue = NULL;
+//xm64player_t xm;
+
+/* Pause all audio output, output silence. */
+void wwviaudio_pause_audio(void)
+{
+	audio_paused = 1;
+}
+
+/* Resume playing audio previously paused. */
+void wwviaudio_resume_audio(void)
+{
+	audio_paused = 0;
+}
+
+/* Silence the music channel */
+void wwviaudio_silence_music(void)
+{
+	music_playing = 0;
+}
+
+/* Resume volume on the music channel. */
+void wwviaudio_resume_music(void)
+{
+	music_playing = 1;
+}
+
+void wwviaudio_toggle_music(void)
+{
+	music_playing = !music_playing;
+}
+
+/* Silence the sound effects. */
+void wwviaudio_silence_sound_effects(void)
+{
+	sound_effects_on = 0;
+}
+
+/* Resume volume on the sound effects. */
+void wwviaudio_resume_sound_effects(void)
+{
+	sound_effects_on = 1;
+}
+
+void wwviaudio_toggle_sound_effects(void)
+{
+	sound_effects_on = !sound_effects_on;
+}
+
+void wwviaudio_set_nomusic(void)
+{
+	nomusic = 1;
+}
+
+int wwviaudio_initialize_portaudio(int maximum_concurrent_sounds, int maximum_sound_clips) 
+{ 
+	max_concurrent_sounds = maximum_concurrent_sounds;
+	max_sound_clips = maximum_sound_clips;
+	allocated_sounds = 0;
+	sounds = (wav64_t*) malloc(maximum_sound_clips*sizeof(sounds[0]));
+	audio_queue = (sound_queue_entry_t*)malloc(maximum_concurrent_sounds*sizeof(audio_queue[0]));
+	audio_init(44100, 4);
+	mixer_init(32); 
+	
+	return 0;
+}
+void wwviaudio_stop_portaudio() { 
+	mixer_close();
+	audio_close(); 
+	free(audio_queue);
+	free(sounds);
+}
+int wwviaudio_read_ogg_clip(int clipnum, char *filename) {
+	int length = strlen(filename);
+	if(filename[length-3] == 'm') {
+		// is xm music.
+
+	} else {
+		// is sound.
+		wav64_open(&sounds[clipnum], filename);
+	}
+	return 0;
+ }
+
+int wwviaudio_play_music(int which_sound) {
+	wav64_play(&sounds[which_sound], WWVIAUDIO_MUSIC_SLOT);
+	wav64_set_loop(&sounds[which_sound], true);
+	return 1;
+}
+void wwviaudio_cancel_music() { 
+	mixer_ch_stop(WWVIAUDIO_MUSIC_SLOT);
+}
+int wwviaudio_add_sound(int which_sound) { return 0; }
+void wwviaudio_add_sound_low_priority(int which_sound) { return; }
+void wwviaudio_cancel_sound(int queue_entry) { return; }
+void wwviaudio_cancel_all_sounds() { return; }
+int wwviaudio_set_sound_device(int device) { return 0; }
+#else
 #include <stdio.h>
 #include <stdint.h>
 #include <limits.h>
@@ -458,6 +578,7 @@ int wwviaudio_set_sound_device(int device)
 	return 0;
 }
 
+#endif
 #else /* stubs only... */
 
 int wwviaudio_initialize_portaudio() { return 0; }
